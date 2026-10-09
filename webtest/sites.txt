@@ -1,7 +1,9 @@
-# Public, read-only websites to check WHEN RUNNING on a network-enabled machine.
-# These have NOT been executed from the current chat environment.
+# Sites reais para benchmark e validação do AI Go Browser v0.6
 https://example.com/
 https://news.ycombinator.com/
-https://github.com/
-https://www.wikipedia.org/
-https://developer.mozilla.org/en-US/
+https://go.dev/
+https://en.wikipedia.org/wiki/Go_(programming_language)
+https://httpbin.org/
+https://books.toscrape.com/
+https://lite.cnn.com/
+https://pkg.go.dev/

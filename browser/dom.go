@@ -368,7 +368,7 @@ func (d *Document) Markdown() string {
 		if n.Tag == "#text" {
 			txt := n.Text
 			if !inPre {
-				txt = norm(txt)
+				txt = norm(html.UnescapeString(txt))
 			}
 			if txt != "" {
 				b.WriteString(txt)
@@ -384,7 +384,7 @@ func (d *Document) Markdown() string {
 				walk(ch, inPre)
 			}
 			b.WriteString("\n\n")
-		case "p":
+		case "p", "section", "article":
 			b.WriteString("\n\n")
 			for _, ch := range n.Children {
 				walk(ch, inPre)
@@ -394,6 +394,12 @@ func (d *Document) Markdown() string {
 			b.WriteString("\n")
 		case "hr":
 			b.WriteString("\n\n---\n\n")
+		case "ul", "ol":
+			b.WriteString("\n")
+			for _, ch := range n.Children {
+				walk(ch, inPre)
+			}
+			b.WriteString("\n")
 		case "li":
 			b.WriteString("\n- ")
 			for _, ch := range n.Children {
@@ -437,24 +443,45 @@ func (d *Document) Markdown() string {
 			b.WriteString("*")
 		case "a":
 			href := resolve(base, n.prop("href"))
-			label := n.innerText(256)
+			label := strings.TrimSpace(html.UnescapeString(n.innerText(256)))
 			if label == "" {
-				label = href
+				label = n.prop("aria-label")
+			}
+			if label == "" {
+				label = n.prop("title")
+			}
+			if label == "" {
+				for _, ch := range n.Children {
+					if ch.Tag == "img" && ch.prop("alt") != "" {
+						label = ch.prop("alt")
+						break
+					}
+				}
 			}
 			if href != "" && label != "" {
-				b.WriteString("[" + label + "](" + href + ")")
+				b.WriteString(" [" + label + "](" + href + ") ")
 			} else {
 				for _, ch := range n.Children {
 					walk(ch, inPre)
 				}
 			}
-		case "tr":
-			b.WriteString("\n|")
+		case "table":
+			b.WriteString("\n\n")
 			for _, ch := range n.Children {
-				if ch.Tag == "td" || ch.Tag == "th" {
-					b.WriteString(" " + norm(ch.innerText(256)) + " |")
-				}
+				walk(ch, inPre)
 			}
+			b.WriteString("\n\n")
+		case "tr":
+			b.WriteString("\n")
+			for _, ch := range n.Children {
+				walk(ch, inPre)
+			}
+		case "td", "th":
+			b.WriteString(" ")
+			for _, ch := range n.Children {
+				walk(ch, inPre)
+			}
+			b.WriteString(" ")
 		default:
 			for _, ch := range n.Children {
 				walk(ch, inPre)

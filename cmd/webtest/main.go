@@ -29,6 +29,8 @@ type Site struct {
     Links int `json:"links"`
     Forms int `json:"forms"`
     Buttons int `json:"buttons"`
+    Headings int `json:"headings"`
+    MarkdownBytes int `json:"markdown_bytes"`
     BodyBytes int `json:"body_bytes"`
     DurationMs int64 `json:"duration_ms"`
     GoRSSMiB float64 `json:"go_rss_mib"`
@@ -86,9 +88,8 @@ func defaultSmoke() (*httptest.Server,string) {
     return srv,srv.URL
 }
 func probe(raw string,run int,worker string,maxText int,extraHosts []string) Site {
-    u,_:=url.Parse(raw)
-    hosts:=append([]string{u.Hostname()},extraHosts...)
-    b:=browser.New(hosts,false)
+    b:=browser.New([]string{"*"},false)
+    b.AllowAll=true
     b.JSWorker=worker
     b.MaxText=maxText
     defer b.Close()
@@ -104,6 +105,8 @@ func probe(raw string,run int,worker string,maxText int,extraHosts []string) Sit
     s.Links=len(p.Links)
     s.Forms=len(p.Forms)
     s.Buttons=len(p.Buttons)
+    s.Headings=len(p.Headings)
+    s.MarkdownBytes=len(p.Markdown)
     t:=strings.TrimSpace(p.Text)
     if len(t)>200 {t=t[:200]}
     s.TextPreview=t
@@ -122,7 +125,7 @@ func probe(raw string,run int,worker string,maxText int,extraHosts []string) Sit
 }
 func execute(urls []string,repeats int,worker string,maxText int,mode string,extraHosts []string) Report {
     r:=Report{
-        Version:"0.4-webtest-1",MeasuredAt:time.Now().UTC().Format(time.RFC3339),
+        Version:"0.6-webtest",MeasuredAt:time.Now().UTC().Format(time.RFC3339),
         Mode:mode,Engine:"Go HTTP+incremental DOM; optional Duktape worker",JavaScript:worker!="",
         Repeat:repeats,SiteCount:len(urls),
         Notes: []string{
