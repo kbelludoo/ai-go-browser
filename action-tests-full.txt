@@ -1,0 +1,65 @@
+?   	ai-go-browser/cmd/aigobrowser	[no test files]
+?   	ai-go-browser/cmd/jsworker	[no test files]
+=== RUN   TestDiscoverAndRunAPIBelowButton
+--- PASS: TestDiscoverAndRunAPIBelowButton (0.00s)
+=== RUN   TestInlineOnclickFunctionAndUnknownMethods
+--- PASS: TestInlineOnclickFunctionAndUnknownMethods (0.00s)
+=== RUN   TestReadOnlyDiscoveryDoesNotFetchExternalScriptUnlessEnabled
+--- PASS: TestReadOnlyDiscoveryDoesNotFetchExternalScriptUnlessEnabled (0.00s)
+=== RUN   TestDiscoveryRejectsOffAllowlistActionsAndComments
+--- PASS: TestDiscoveryRejectsOffAllowlistActionsAndComments (0.00s)
+=== RUN   TestNavigationCookieAndForm
+--- PASS: TestNavigationCookieAndForm (0.00s)
+=== RUN   TestDisallowedSchemeAndHosts
+--- PASS: TestDisallowedSchemeAndHosts (0.00s)
+=== RUN   TestRedirectBlockedByAllowlist
+--- PASS: TestRedirectBlockedByAllowlist (0.00s)
+=== RUN   TestPasswordRedaction
+--- PASS: TestPasswordRedaction (0.00s)
+=== RUN   TestDOMHTMLFragmentsAndRawText
+--- PASS: TestDOMHTMLFragmentsAndRawText (0.00s)
+=== RUN   TestDOMFormFieldsAndSessionPersistence
+--- PASS: TestDOMFormFieldsAndSessionPersistence (0.00s)
+=== RUN   TestDOMLimitsAndUnsupportedSelectors
+--- PASS: TestDOMLimitsAndUnsupportedSelectors (0.00s)
+=== RUN   TestDOMJSIntegration
+--- PASS: TestDOMJSIntegration (0.00s)
+=== RUN   TestQueryDoesNotRepeatPageSnapshot
+--- PASS: TestQueryDoesNotRepeatPageSnapshot (0.00s)
+=== RUN   TestFailClosedWithoutHostAllowlist
+--- PASS: TestFailClosedWithoutHostAllowlist (0.00s)
+=== RUN   TestPersistentButtonEvents
+--- PASS: TestPersistentButtonEvents (0.00s)
+=== RUN   TestButtonTimeoutKeepsGoAlive
+--- PASS: TestButtonTimeoutKeepsGoAlive (0.18s)
+=== RUN   TestFillThenClickJSReadsValue
+--- PASS: TestFillThenClickJSReadsValue (0.01s)
+=== RUN   TestButtonInlineHandlerWithoutScriptTag
+--- PASS: TestButtonInlineHandlerWithoutScriptTag (0.00s)
+=== RUN   TestJSEnabledAndDisabled
+--- PASS: TestJSEnabledAndDisabled (0.00s)
+=== RUN   TestUntrustedInfiniteLoopTimesOut
+--- PASS: TestUntrustedInfiniteLoopTimesOut (0.25s)
+=== RUN   TestOverlappingNodeMutation
+--- PASS: TestOverlappingNodeMutation (0.00s)
+=== RUN   TestAppendOnlyPreservesMarkup
+--- PASS: TestAppendOnlyPreservesMarkup (0.00s)
+=== RUN   TestScriptErrorDoesNotDiscardPage
+--- PASS: TestScriptErrorDoesNotDiscardPage (0.00s)
+=== RUN   TestParseLinksFormsAndHiddenContent
+--- PASS: TestParseLinksFormsAndHiddenContent (0.00s)
+=== RUN   TestEscapedQuotedTagAndBlockedSchemes
+--- PASS: TestEscapedQuotedTagAndBlockedSchemes (0.00s)
+=== RUN   TestTextLimit
+--- PASS: TestTextLimit (0.00s)
+PASS
+ok  	ai-go-browser/browser	0.478s
+=== RUN   TestReadSites
+--- PASS: TestReadSites (0.00s)
+=== RUN   TestReadSitesInvalid
+--- PASS: TestReadSitesInvalid (0.00s)
+=== RUN   TestLocalSmoke
+http://127.0.0.1:42909                    HTTP=200 title="Local Smoke Test" text=true rss=8.9MiB err=
+--- PASS: TestLocalSmoke (0.00s)
+PASS
+ok  	ai-go-browser/cmd/webtest	0.005s

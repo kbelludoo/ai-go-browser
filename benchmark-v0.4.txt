@@ -1,0 +1,7 @@
+goos: linux
+goarch: amd64
+pkg: ai-go-browser/browser
+cpu: AMD EPYC 9V74 80-Core Processor                
+BenchmarkDOM1000Links-5   	     310	   3786357 ns/op	  24.49 MB/s	 2533890 B/op	   35031 allocs/op
+PASS
+ok  	ai-go-browser/browser	1.569s

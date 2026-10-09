@@ -1,0 +1,7 @@
+# Public, read-only websites to check WHEN RUNNING on a network-enabled machine.
+# These have NOT been executed from the current chat environment.
+https://example.com/
+https://news.ycombinator.com/
+https://github.com/
+https://www.wikipedia.org/
+https://developer.mozilla.org/en-US/

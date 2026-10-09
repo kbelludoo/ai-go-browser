@@ -1,0 +1,1594 @@
+{
+  "target": "GoBrowser v0.5 action resolver",
+  "scope": "actual local servers; no public internet used",
+  "python_backend": "Python http.server (actual Python HTTP server)",
+  "php_backend": "PHP built-in server (actual PHP runtime)",
+  "passed": 140,
+  "failed": 0,
+  "total": 140,
+  "go_process_peak_sampled_rss_mib": 12.46,
+  "python_api_hits": 10,
+  "python_post_hits": 0,
+  "tests": [
+    {
+      "backend": "python",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 3.6,
+      "info": {
+        "actions": 6,
+        "api_hits_before_run": 0
+      }
+    },
+    {
+      "backend": "python",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 2.0,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "python",
+          "products": [
+            "Livro",
+            "Caneta"
+          ]
+        },
+        "url": "http://127.0.0.1:35639/api/products"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 1.47,
+      "info": {
+        "feed": {
+          "backend": "python",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "python",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.86,
+      "info": {
+        "text": "Pesquisa Python Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 1.82,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de Python real"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.97,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 0.85,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.84,
+      "info": {
+        "actions": 6,
+        "api_hits_before_run": 1
+      }
+    },
+    {
+      "backend": "python",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.69,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "python",
+          "products": [
+            "Livro",
+            "Caneta"
+          ]
+        },
+        "url": "http://127.0.0.1:35639/api/products"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 1.58,
+      "info": {
+        "feed": {
+          "backend": "python",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "python",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.6,
+      "info": {
+        "text": "Pesquisa Python Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 1.4,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de Python real"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.86,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 0.81,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.71,
+      "info": {
+        "actions": 6,
+        "api_hits_before_run": 2
+      }
+    },
+    {
+      "backend": "python",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.61,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "python",
+          "products": [
+            "Livro",
+            "Caneta"
+          ]
+        },
+        "url": "http://127.0.0.1:35639/api/products"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 1.44,
+      "info": {
+        "feed": {
+          "backend": "python",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "python",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.57,
+      "info": {
+        "text": "Pesquisa Python Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 1.6,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de Python real"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.87,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 0.84,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.85,
+      "info": {
+        "actions": 6,
+        "api_hits_before_run": 3
+      }
+    },
+    {
+      "backend": "python",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.55,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "python",
+          "products": [
+            "Livro",
+            "Caneta"
+          ]
+        },
+        "url": "http://127.0.0.1:35639/api/products"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 1.36,
+      "info": {
+        "feed": {
+          "backend": "python",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "python",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.56,
+      "info": {
+        "text": "Pesquisa Python Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 1.28,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de Python real"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 1.01,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 0.85,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.75,
+      "info": {
+        "actions": 6,
+        "api_hits_before_run": 4
+      }
+    },
+    {
+      "backend": "python",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.57,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "python",
+          "products": [
+            "Livro",
+            "Caneta"
+          ]
+        },
+        "url": "http://127.0.0.1:35639/api/products"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 1.32,
+      "info": {
+        "feed": {
+          "backend": "python",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "python",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 2.58,
+      "info": {
+        "text": "Pesquisa Python Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 1.4,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de Python real"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.9,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 1.33,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.74,
+      "info": {
+        "actions": 6,
+        "api_hits_before_run": 5
+      }
+    },
+    {
+      "backend": "python",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.5,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "python",
+          "products": [
+            "Livro",
+            "Caneta"
+          ]
+        },
+        "url": "http://127.0.0.1:35639/api/products"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 1.22,
+      "info": {
+        "feed": {
+          "backend": "python",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "python",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.85,
+      "info": {
+        "text": "Pesquisa Python Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 1.68,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de Python real"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 1.11,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 1.0,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.82,
+      "info": {
+        "actions": 6,
+        "api_hits_before_run": 6
+      }
+    },
+    {
+      "backend": "python",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.66,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "python",
+          "products": [
+            "Livro",
+            "Caneta"
+          ]
+        },
+        "url": "http://127.0.0.1:35639/api/products"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 1.44,
+      "info": {
+        "feed": {
+          "backend": "python",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "python",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 2.39,
+      "info": {
+        "text": "Pesquisa Python Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 1.91,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de Python real"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.84,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 0.68,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.84,
+      "info": {
+        "actions": 6,
+        "api_hits_before_run": 7
+      }
+    },
+    {
+      "backend": "python",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.53,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "python",
+          "products": [
+            "Livro",
+            "Caneta"
+          ]
+        },
+        "url": "http://127.0.0.1:35639/api/products"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 1.73,
+      "info": {
+        "feed": {
+          "backend": "python",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "python",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.73,
+      "info": {
+        "text": "Pesquisa Python Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 1.28,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de Python real"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.82,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 0.71,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.69,
+      "info": {
+        "actions": 6,
+        "api_hits_before_run": 8
+      }
+    },
+    {
+      "backend": "python",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.42,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "python",
+          "products": [
+            "Livro",
+            "Caneta"
+          ]
+        },
+        "url": "http://127.0.0.1:35639/api/products"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 1.22,
+      "info": {
+        "feed": {
+          "backend": "python",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "python",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.72,
+      "info": {
+        "text": "Pesquisa Python Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 1.77,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de Python real"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.9,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 0.78,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.7,
+      "info": {
+        "actions": 6,
+        "api_hits_before_run": 9
+      }
+    },
+    {
+      "backend": "python",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.15,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "python",
+          "products": [
+            "Livro",
+            "Caneta"
+          ]
+        },
+        "url": "http://127.0.0.1:35639/api/products"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 1.29,
+      "info": {
+        "feed": {
+          "backend": "python",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "python",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.48,
+      "info": {
+        "text": "Pesquisa Python Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 1.19,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de Python real"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.88,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "python",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 1.65,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 1.11,
+      "info": {
+        "actions": 7,
+        "api_hits_before_run": "not instrumented"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.76,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "php",
+          "products": [
+            {
+              "name": "Caneta"
+            },
+            {
+              "name": "Livro"
+            }
+          ]
+        },
+        "url": "http://127.0.0.1:33147/products.php"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 1.72,
+      "info": {
+        "feed": {
+          "backend": "php",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "php",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.45,
+      "info": {
+        "text": "Pesquisa PHP Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 1.12,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de PHP real"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.7,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 0.91,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.52,
+      "info": {
+        "actions": 7,
+        "api_hits_before_run": "not instrumented"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.63,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "php",
+          "products": [
+            {
+              "name": "Caneta"
+            },
+            {
+              "name": "Livro"
+            }
+          ]
+        },
+        "url": "http://127.0.0.1:33147/products.php"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 1.14,
+      "info": {
+        "feed": {
+          "backend": "php",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "php",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.26,
+      "info": {
+        "text": "Pesquisa PHP Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 1.2,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de PHP real"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.63,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 0.57,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.54,
+      "info": {
+        "actions": 7,
+        "api_hits_before_run": "not instrumented"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.21,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "php",
+          "products": [
+            {
+              "name": "Caneta"
+            },
+            {
+              "name": "Livro"
+            }
+          ]
+        },
+        "url": "http://127.0.0.1:33147/products.php"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 0.91,
+      "info": {
+        "feed": {
+          "backend": "php",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "php",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.41,
+      "info": {
+        "text": "Pesquisa PHP Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 1.03,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de PHP real"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.59,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 0.57,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.59,
+      "info": {
+        "actions": 7,
+        "api_hits_before_run": "not instrumented"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.04,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "php",
+          "products": [
+            {
+              "name": "Caneta"
+            },
+            {
+              "name": "Livro"
+            }
+          ]
+        },
+        "url": "http://127.0.0.1:33147/products.php"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 0.89,
+      "info": {
+        "feed": {
+          "backend": "php",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "php",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.77,
+      "info": {
+        "text": "Pesquisa PHP Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 1.13,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de PHP real"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.95,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 0.67,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.48,
+      "info": {
+        "actions": 7,
+        "api_hits_before_run": "not instrumented"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.0,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "php",
+          "products": [
+            {
+              "name": "Caneta"
+            },
+            {
+              "name": "Livro"
+            }
+          ]
+        },
+        "url": "http://127.0.0.1:33147/products.php"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 1.07,
+      "info": {
+        "feed": {
+          "backend": "php",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "php",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.61,
+      "info": {
+        "text": "Pesquisa PHP Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 1.28,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de PHP real"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.68,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 0.6,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.59,
+      "info": {
+        "actions": 7,
+        "api_hits_before_run": "not instrumented"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.26,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "php",
+          "products": [
+            {
+              "name": "Caneta"
+            },
+            {
+              "name": "Livro"
+            }
+          ]
+        },
+        "url": "http://127.0.0.1:33147/products.php"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 1.07,
+      "info": {
+        "feed": {
+          "backend": "php",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "php",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.57,
+      "info": {
+        "text": "Pesquisa PHP Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 1.2,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de PHP real"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.65,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 0.62,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.65,
+      "info": {
+        "actions": 7,
+        "api_hits_before_run": "not instrumented"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.17,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "php",
+          "products": [
+            {
+              "name": "Caneta"
+            },
+            {
+              "name": "Livro"
+            }
+          ]
+        },
+        "url": "http://127.0.0.1:33147/products.php"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 1.31,
+      "info": {
+        "feed": {
+          "backend": "php",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "php",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.44,
+      "info": {
+        "text": "Pesquisa PHP Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 1.0,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de PHP real"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.62,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 0.58,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.56,
+      "info": {
+        "actions": 7,
+        "api_hits_before_run": "not instrumented"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.09,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "php",
+          "products": [
+            {
+              "name": "Caneta"
+            },
+            {
+              "name": "Livro"
+            }
+          ]
+        },
+        "url": "http://127.0.0.1:33147/products.php"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 0.82,
+      "info": {
+        "feed": {
+          "backend": "php",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "php",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.08,
+      "info": {
+        "text": "Pesquisa PHP Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 0.73,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de PHP real"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.62,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 0.73,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.52,
+      "info": {
+        "actions": 7,
+        "api_hits_before_run": "not instrumented"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 1.33,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "php",
+          "products": [
+            {
+              "name": "Caneta"
+            },
+            {
+              "name": "Livro"
+            }
+          ]
+        },
+        "url": "http://127.0.0.1:33147/products.php"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 1.02,
+      "info": {
+        "feed": {
+          "backend": "php",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "php",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.26,
+      "info": {
+        "text": "Pesquisa PHP Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 0.95,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de PHP real"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.59,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 0.57,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "read-only discovery",
+      "passed": true,
+      "duration_ms": 0.46,
+      "info": {
+        "actions": 7,
+        "api_hits_before_run": "not instrumented"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "button -> direct JSON with cookies",
+      "passed": true,
+      "duration_ms": 0.97,
+      "info": {
+        "data": {
+          "api_token": "[redacted]",
+          "backend": "php",
+          "products": [
+            {
+              "name": "Caneta"
+            },
+            {
+              "name": "Livro"
+            }
+          ]
+        },
+        "url": "http://127.0.0.1:33147/products.php"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "hypermedia JSON",
+      "passed": true,
+      "duration_ms": 1.58,
+      "info": {
+        "feed": {
+          "backend": "php",
+          "feed": {
+            "item": 123
+          }
+        }
+      }
+    },
+    {
+      "backend": "php",
+      "test": "GET form with filled input",
+      "passed": true,
+      "duration_ms": 1.14,
+      "info": {
+        "text": "Pesquisa PHP Consulta: consulta 42"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "HTMX HTTP fragment",
+      "passed": true,
+      "duration_ms": 0.79,
+      "info": {
+        "preview": "title: \ntext: Fragmento vindo de PHP real"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "POST denied",
+      "passed": true,
+      "duration_ms": 0.56,
+      "info": {
+        "refused_as_expected": "POST requires -allow-post and confirm:true"
+      }
+    },
+    {
+      "backend": "php",
+      "test": "off-allowlist URL denied",
+      "passed": true,
+      "duration_ms": 0.49,
+      "info": {
+        "refused_as_expected": "host localhost not on allowlist"
+      }
+    }
+  ]
+}

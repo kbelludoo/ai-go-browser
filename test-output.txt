@@ -1,0 +1,38 @@
+=== RUN   TestNavigationCookieAndForm
+--- PASS: TestNavigationCookieAndForm (0.00s)
+=== RUN   TestDisallowedSchemeAndHosts
+--- PASS: TestDisallowedSchemeAndHosts (0.00s)
+=== RUN   TestRedirectBlockedByAllowlist
+--- PASS: TestRedirectBlockedByAllowlist (0.00s)
+=== RUN   TestPasswordRedaction
+--- PASS: TestPasswordRedaction (0.00s)
+=== RUN   TestDOMHTMLFragmentsAndRawText
+--- PASS: TestDOMHTMLFragmentsAndRawText (0.00s)
+=== RUN   TestDOMFormFieldsAndSessionPersistence
+--- PASS: TestDOMFormFieldsAndSessionPersistence (0.00s)
+=== RUN   TestDOMLimitsAndUnsupportedSelectors
+--- PASS: TestDOMLimitsAndUnsupportedSelectors (0.00s)
+=== RUN   TestDOMJSIntegration
+--- PASS: TestDOMJSIntegration (0.00s)
+=== RUN   TestQueryDoesNotRepeatPageSnapshot
+--- PASS: TestQueryDoesNotRepeatPageSnapshot (0.00s)
+=== RUN   TestFailClosedWithoutHostAllowlist
+--- PASS: TestFailClosedWithoutHostAllowlist (0.00s)
+=== RUN   TestJSEnabledAndDisabled
+--- PASS: TestJSEnabledAndDisabled (0.00s)
+=== RUN   TestUntrustedInfiniteLoopTimesOut
+--- PASS: TestUntrustedInfiniteLoopTimesOut (0.25s)
+=== RUN   TestOverlappingNodeMutation
+--- PASS: TestOverlappingNodeMutation (0.00s)
+=== RUN   TestAppendOnlyPreservesMarkup
+--- PASS: TestAppendOnlyPreservesMarkup (0.00s)
+=== RUN   TestScriptErrorDoesNotDiscardPage
+--- PASS: TestScriptErrorDoesNotDiscardPage (0.00s)
+=== RUN   TestParseLinksFormsAndHiddenContent
+--- PASS: TestParseLinksFormsAndHiddenContent (0.00s)
+=== RUN   TestEscapedQuotedTagAndBlockedSchemes
+--- PASS: TestEscapedQuotedTagAndBlockedSchemes (0.00s)
+=== RUN   TestTextLimit
+--- PASS: TestTextLimit (0.00s)
+PASS
+ok  	ai-go-browser/browser	0.276s

@@ -1,0 +1,70 @@
+{
+  "version": "0.4-webtest-1",
+  "measured_at_utc": "2026-10-09T21:38:14Z",
+  "mode": "local_smoke",
+  "engine": "Go HTTP+incremental DOM; optional Duktape worker",
+  "javascript_enabled": false,
+  "repeat": 3,
+  "site_count": 1,
+  "successful_loads": 3,
+  "useful_pages": 3,
+  "max_observed_go_rss_mib": 7.29296875,
+  "max_observed_approx_rss_mib": 7.29296875,
+  "notes": [
+    "Results are from the environment where webtest is actually run; local_smoke is not a public-website test.",
+    "A valid HTTP response does not establish JavaScript/DOM parity with Chromium.",
+    "Go RSS is sampled after each command, not continuously; true peak may be higher.",
+    "Approx RSS sums Go RSS and worker historical RSS peaks measured at different instants; it is not a process-tree peak or a 300-MiB guarantee.",
+    "Only GET requests are issued. No login, form submission, CAPTCHA circumvention or anti-bot bypass."
+  ],
+  "results": [
+    {
+      "url": "http://127.0.0.1:46873",
+      "run": 1,
+      "loaded": true,
+      "useful_text": true,
+      "http_status": 200,
+      "title": "Local Smoke Test",
+      "text_preview": "Sample article Readable article text for our AI agent. Next page",
+      "links": 1,
+      "forms": 1,
+      "buttons": 0,
+      "body_bytes": 371,
+      "duration_ms": 1,
+      "go_rss_mib": 7.23046875,
+      "approx_sum_rss_mib": 7.23046875
+    },
+    {
+      "url": "http://127.0.0.1:46873",
+      "run": 2,
+      "loaded": true,
+      "useful_text": true,
+      "http_status": 200,
+      "title": "Local Smoke Test",
+      "text_preview": "Sample article Readable article text for our AI agent. Next page",
+      "links": 1,
+      "forms": 1,
+      "buttons": 0,
+      "body_bytes": 371,
+      "duration_ms": 0,
+      "go_rss_mib": 7.27734375,
+      "approx_sum_rss_mib": 7.27734375
+    },
+    {
+      "url": "http://127.0.0.1:46873",
+      "run": 3,
+      "loaded": true,
+      "useful_text": true,
+      "http_status": 200,
+      "title": "Local Smoke Test",
+      "text_preview": "Sample article Readable article text for our AI agent. Next page",
+      "links": 1,
+      "forms": 1,
+      "buttons": 0,
+      "body_bytes": 371,
+      "duration_ms": 0,
+      "go_rss_mib": 7.29296875,
+      "approx_sum_rss_mib": 7.29296875
+    }
+  ]
+}

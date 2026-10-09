@@ -1,0 +1,51 @@
+{
+  "version": "0.5",
+  "execution": "local HTTP server only, no public web",
+  "toolchain": "Go 1.23.2 linux/amd64",
+  "tests": "go test ./... -count=1 passed; go vet ./... passed",
+  "language_independent_test": "TestServerLanguageIndependentActions passed (PHP-shaped route, Django-shaped GET form, nonbutton HTMX, advertised JSON)",
+  "builds": [
+    "linux/amd64",
+    "linux/arm64"
+  ],
+  "demo_actions": [
+    {
+      "ok": true,
+      "actions": 0,
+      "api_status": null,
+      "go_rss_mib": 7.52734375
+    },
+    {
+      "ok": true,
+      "actions": 3,
+      "api_status": null,
+      "go_rss_mib": 7.66796875
+    },
+    {
+      "ok": true,
+      "actions": 0,
+      "api_status": 200,
+      "go_rss_mib": 7.6953125
+    }
+  ],
+  "demo_json_data": {
+    "api_token": "[redacted]",
+    "products": [
+      {
+        "name": "Caderno",
+        "price": 12.5
+      },
+      {
+        "name": "Caneta",
+        "price": 2.9
+      }
+    ]
+  },
+  "safety": "No network action during discover; inferred GET requires confirm; unsafe/state-changing unmodeled actions cannot execute",
+  "limits": [
+    "does not inspect inaccessible server-side source",
+    "no general WebSocket or WASM network action discovery",
+    "GET signatures may need runtime parameters not reconstructed",
+    "no public-web test"
+  ]
+}

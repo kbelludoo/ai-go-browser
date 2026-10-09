@@ -1,0 +1,75 @@
+{
+  "version": "0.4",
+  "date": "2026-10-09",
+  "platform": "Linux AMD64, Go 1.23.2",
+  "test_count": 22,
+  "test_result": "PASS",
+  "go_vet": "PASS",
+  "cross_compile": {
+    "linux_amd64": "PASS",
+    "linux_arm64": "PASS, not executed on ARM64 hardware",
+    "duktape_worker_amd64": "PASS",
+    "duktape_worker_arm64": "NOT BUILT"
+  },
+  "event_test": {
+    "steps": [
+      {
+        "ok": true,
+        "text": "JavaScript ativo Contar Página inicial Navegação para agente IA. Ler artigo Busca Pesquisar Link dinâmico"
+      },
+      {
+        "ok": true,
+        "text": "Cliques: 1 Contar Página inicial Navegação para agente IA. Ler artigo Busca Pesquisar Link dinâmico"
+      },
+      {
+        "ok": true,
+        "text": "Cliques: 2 Contar Página inicial Navegação para agente IA. Ler artigo Busca Pesquisar Link dinâmico"
+      },
+      {
+        "ok": true,
+        "text": [
+          {
+            "tag": "p",
+            "id": "estado",
+            "text": "Cliques: 2"
+          }
+        ]
+      }
+    ],
+    "persistent_click_counter": [
+      1,
+      2
+    ]
+  },
+  "memory": {
+    "go_rss_mib_at_end": 7.7109375,
+    "js_worker_peak_rss_mib": 3.78515625,
+    "approx_sum_of_peaks_mib": 11.496,
+    "unit": "MiB",
+    "measurement_note": "Summing separate RSS peaks of two processes; not a synchronized tree-wide peak; local demo only."
+  },
+  "limitations": [
+    "No full HTML5 parser",
+    "Duktape has limited JS compatibility; no ES module, fetch/XHR or service workers",
+    "No GPU/WebGL or visual layout",
+    "JavaScript worker depends on libduktape.so.207 on AMD64",
+    "No real internet site compatibility test",
+    "Strict total 300 MiB enforcement not implemented; use cgroups",
+    "No guaranteed anti-bot bypass",
+    "Click event dispatch for button with id; not link event navigation or full DOM event semantics"
+  ],
+  "artifacts": {
+    "jsworker-linux-amd64": {
+      "sha256": "2436c4d4de1d64257512ea3f5e873b27c0ebcbcbb2714249aa9b6a85a373289e",
+      "bytes": 2864072
+    },
+    "ai-go-browser-linux-amd64": {
+      "sha256": "7ddd0cfc98d238011eec1981dcb8bda9f0303fd6b94d6cf894660031856a6ef7",
+      "bytes": 9437220
+    },
+    "ai-go-browser-linux-arm64": {
+      "sha256": "ae53704acf6b2178ff3b87612b711e4112f5ed71a4046d71ae16d865be979972",
+      "bytes": 9081613
+    }
+  }
+}
