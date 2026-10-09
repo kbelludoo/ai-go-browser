@@ -56,9 +56,16 @@ func parseCommand(line string) (browser.Command, error) {
 	switch cmd {
 	case "open":
 		if len(parts) < 2 {
-			return browser.Command{}, errors.New("uso: open <url>")
+			return browser.Command{}, errors.New("uso: open <url> [js]")
 		}
-		return browser.Command{Cmd: "open", URL: parts[1]}, nil
+		renderJS := len(parts) > 2 && (parts[2] == "js" || parts[2] == "--js")
+		return browser.Command{Cmd: "open", URL: parts[1], RenderJS: renderJS}, nil
+	case "render":
+		target := ""
+		if len(parts) > 1 {
+			target = parts[1]
+		}
+		return browser.Command{Cmd: "render", URL: target}, nil
 	case "click":
 		if len(parts) < 2 {
 			return browser.Command{}, errors.New("uso: click <ref>")
@@ -180,6 +187,9 @@ func main() {
 	maxText := flag.Int("max-text", 10000, "Maximum visible text characters returned per page")
 	userAgent := flag.String("user-agent", "", "Custom User-Agent header")
 	format := flag.String("format", "json", "Output format: json, markdown, or pretty")
+	renderJS := flag.Bool("render-js", false, "Render page using ephemeral headless browser (full JS/DOM execution)")
+	autoJS := flag.Bool("auto-js", true, "Automatically fall back to headless browser when page is an empty CSR/SPA shell")
+	browserPath := flag.String("browser-path", "", "Path to system Chrome/Edge executable")
 	flag.Parse()
 
 	var allowedHosts []string
@@ -191,6 +201,8 @@ func main() {
 	b.ScanScripts = *scanScripts
 	b.JSWorker = *jsWorker
 	b.UserAgent = *userAgent
+	b.AutoRenderJS = *autoJS
+	b.SystemBrowser = *browserPath
 	if *hosts == "" && *allowAll {
 		b.AllowAll = true
 	}
@@ -281,7 +293,7 @@ func main() {
 		if !strings.HasPrefix(targetURL, "http://") && !strings.HasPrefix(targetURL, "https://") {
 			targetURL = "https://" + targetURL
 		}
-		r := b.Execute(browser.Command{Cmd: "open", URL: targetURL})
+		r := b.Execute(browser.Command{Cmd: "open", URL: targetURL, RenderJS: *renderJS})
 		emit(r)
 		if !r.OK {
 			os.Exit(1)

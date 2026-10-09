@@ -156,3 +156,38 @@ func AnalyzeTechStack(rawHTML string, textLen int, encoding string) TechStack {
 		Notice:       notice,
 	}
 }
+
+var (
+	reNextData = regexp.MustCompile(`(?s)<script\s+id="__NEXT_DATA__"[^>]*>(.*?)</script>`)
+	reJSONLD   = regexp.MustCompile(`(?s)<script\s+type="application/ld\+json"[^>]*>(.*?)</script>`)
+)
+
+// ExtractStructuredData extracts embedded JSON-LD and Next.js hydration payload.
+func ExtractStructuredData(rawHTML string) map[string]string {
+	out := make(map[string]string)
+	if m := reNextData.FindStringSubmatch(rawHTML); len(m) > 1 {
+		data := strings.TrimSpace(m[1])
+		if len(data) > 0 {
+			if len(data) > 8192 {
+				out["next_data"] = data[:8192] + "... [truncated]"
+			} else {
+				out["next_data"] = data
+			}
+		}
+	}
+	if m := reJSONLD.FindAllStringSubmatch(rawHTML, 3); len(m) > 0 {
+		var lds []string
+		for _, item := range m {
+			if len(item) > 1 {
+				trimmed := strings.TrimSpace(item[1])
+				if len(trimmed) > 0 && len(trimmed) < 4096 {
+					lds = append(lds, trimmed)
+				}
+			}
+		}
+		if len(lds) > 0 {
+			out["json_ld"] = strings.Join(lds, "\n---\n")
+		}
+	}
+	return out
+}

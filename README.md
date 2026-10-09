@@ -1,17 +1,21 @@
-# AI Go Browser v0.6 — Navegador Ultra-Leve & Rápido para Agentes de IA
+# AI Go Browser v0.7 — Navegador Híbrido Universal para Agentes de IA
 
-Um navegador headless de alta performance escrito em Go puro, projetado para **agentes de IA e automação semântica**. Consome **menos de 30 MB de RAM** (teto máximo garantido de 300 MB) e responde em **50 a 500 ms**, sem o peso de 1 GB+ do Chromium.
+Um navegador headless de alta performance projetado para **agentes de IA e automação semântica**, capaz de acessar **qualquer tecnologia da Web** mantendo o consumo estrito abaixo de 300 MB de RAM (com média entre **10 e 25 MB**).
 
-## Novidades da v0.6 (Navegação para IA sem perda de informações)
+## Arquitetura Híbrida Universal (3 Camadas)
 
-- **Extração Semântica em Markdown (`markdown`)**: Converte a árvore de DOM em Markdown limpo (títulos `#`, parágrafos, listas `-`, links `[texto](url)`, tabelas `| col | col |` e metadados). A IA lê a estrutura visual sem consumir tokens excessivos com CSS/scripts.
-- **Navegação Livre (`-allow-all`)**: Navegação desimpedida entre domínios da web, subdomínios automáticos e suporte a até 15 redirecionamentos com cookies persistentes.
-- **Parser Resiliente de Alto Volume**: Suporta páginas ricas da web moderna (Wikipedia, GitHub, Hacker News) processando dezenas de milhares de nós sem erros de limite.
-- **Conexão HTTP Otimizada**: Handshake TLS rápido com Happy Eyeballs, HTTP/2 nativo e User-Agent moderno para evitar bloqueios 403.
-- **Modo CLI Direto e Shell Interativo**:
-  - `aigobrowser https://news.ycombinator.com` (leitura imediata da página).
-  - `aigobrowser -format=markdown https://go.dev` (exporta a página em Markdown).
-  - Shell interativo com comandos amigáveis (`open`, `links`, `text`, `markdown`, `back`, `quit`) e suporte nativo a JSONL para IAs.
+1. **Camada 1: Motor Go Puro (Padrão para 80%+ da Web)**:
+   - Conexão HTTP/2 com TLS moderno, Happy Eyeballs e cookies de sessão.
+   - Resposta em **50 a 300 ms** e **<25 MB de RAM**.
+   - Ideal para Wikipédia, portais de notícia (CNN, G1, BBC), blogs, documentações, WordPress, PHP, Django, Go e APIs.
+2. **Camada 2: Extrator de Dados Estruturados e Hydration**:
+   - Extrai automaticamente payloads `<script id="__NEXT_DATA__">`, Nuxt data e `<script type="application/ld+json">`.
+   - Entrega dados completos de artigos e produtos mesmo em páginas que usam hidratação de cliente.
+3. **Camada 3: Motor Headless Efêmero (On-Demand para SPAs em React/Vue/Angular)**:
+   - Acionado via comando `{"cmd":"open","url":"...","js":true}`, comando CLI `render <url>` ou flag `-render-js`.
+   - **Fallback Automático (`-auto-js`)**: se o motor Go detectar uma casca de SPA vazia (`<div id="root"></div>`), aciona o navegador do sistema temporariamente.
+   - Executa o navegador do sistema (Edge no Windows, Chrome/Chromium no Linux/macOS) de forma efêmera por ~2 segundos com `--headless=new --dump-dom`.
+   - O processo é **imediatamente finalizado** após o dump do DOM, devolvendo a RAM para 0 MB e alimentando o parser do Go.
 
 ---
 

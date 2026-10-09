@@ -27,6 +27,7 @@ type Command struct {
 	Selector string `json:"selector,omitempty"`
 	Value    string `json:"value,omitempty"`
 	Confirm  bool   `json:"confirm,omitempty"`
+	RenderJS bool   `json:"js,omitempty"`
 }
 type Memory struct {
 	RSSMiB  float64 `json:"rss_mib"`
@@ -56,6 +57,8 @@ type Browser struct {
 	AllowPost         bool
 	MaxText           int
 	UserAgent         string
+	AutoRenderJS      bool
+	SystemBrowser     string
 	ScanScripts       bool
 	scannedScripts    bool
 	scannedScriptText string
@@ -197,6 +200,10 @@ func (b *Browser) request(method, target string, params url.Values, saveHistory 
 	}
 	p := d.Page(b.MaxText)
 	p.Stack = AnalyzeTechStack(string(data), len([]rune(p.Text)), encoding)
+	structData := ExtractStructuredData(string(data))
+	for k, v := range structData {
+		p.Metadata[k] = v
+	}
 	b.rawHTML = append([]byte(nil), data...)
 	b.scannedScripts = false
 	b.scannedScriptText = ""
@@ -207,13 +214,65 @@ func (b *Browser) request(method, target string, params url.Values, saveHistory 
 	b.Current = &p
 	return nil
 }
+
+// RenderPageWithJS renders a page using an ephemeral headless browser, captures the DOM, and parses it.
+func (b *Browser) RenderPageWithJS(targetURL string) error {
+	u, err := url.Parse(targetURL)
+	if err != nil {
+		return err
+	}
+	if err = b.validate(u); err != nil {
+		return err
+	}
+	rendered, err := RenderHeadless(b.SystemBrowser, targetURL, 15*time.Second)
+	if err != nil {
+		return err
+	}
+	d, err := ParseDocument(rendered, targetURL, 200, len(rendered))
+	if err != nil {
+		return err
+	}
+	p := d.Page(b.MaxText)
+	p.Stack = AnalyzeTechStack(string(rendered), len([]rune(p.Text)), "utf-8")
+	p.Stack.RenderMode = "Headless Rendered (JS Executed)"
+	p.Stack.Notice = ""
+	structData := ExtractStructuredData(string(rendered))
+	for k, v := range structData {
+		p.Metadata[k] = v
+	}
+	b.rawHTML = append([]byte(nil), rendered...)
+	b.Document = d
+	if b.Current != nil {
+		b.History = append(b.History, b.Current.URL)
+	}
+	b.Current = &p
+	return nil
+}
+
 func (b *Browser) Execute(c Command) Result {
 	start := time.Now()
 	r := Result{}
 	var err error
 	switch strings.ToLower(strings.TrimSpace(c.Cmd)) {
 	case "open":
-		err = b.request("GET", c.URL, nil, true)
+		if c.RenderJS {
+			err = b.RenderPageWithJS(c.URL)
+		} else {
+			err = b.request("GET", c.URL, nil, true)
+			if err == nil && b.AutoRenderJS && b.Current != nil && strings.HasPrefix(b.Current.Stack.RenderMode, "CSR") && b.Current.Stack.ContentYield < 1.0 {
+				_ = b.RenderPageWithJS(c.URL)
+			}
+		}
+	case "render":
+		target := c.URL
+		if target == "" && b.Current != nil {
+			target = b.Current.URL
+		}
+		if target == "" {
+			err = errors.New("no URL to render")
+		} else {
+			err = b.RenderPageWithJS(target)
+		}
 	case "discover":
 		if b.Document == nil {
 			err = errors.New("no page open")
