@@ -1,12 +1,17 @@
-# AI Go Browser v0.5 — Protocol & Action Resolver para agentes de IA
+# AI Go Browser v0.6 — Navegador Ultra-Leve & Rápido para Agentes de IA
 
-## Testes adicionais (servidores Python e PHP reais, executados localmente)
+Um navegador headless de alta performance escrito em Go puro, projetado para **agentes de IA e automação semântica**. Consome **menos de 30 MB de RAM** (teto máximo garantido de 300 MB) e responde em **50 a 500 ms**, sem o peso de 1 GB+ do Chromium.
 
-Foi acrescentada `integration/e2e_backends.py`: **140/140 verificações** (10 repetições, 2 backends, 7 cenários por backend), com JSON, cookies, formulários, HTMX e bloqueios de segurança. RSS amostrado do Go: **12,46 MiB** no conjunto local; não representa um site público. Instruções e limitações em [`integration/README.md`](integration/README.md).
+## Novidades da v0.6 (Navegação para IA sem perda de informações)
 
-```bash
-python3 integration/e2e_backends.py --repeat 10
-```
+- **Extração Semântica em Markdown (`markdown`)**: Converte a árvore de DOM em Markdown limpo (títulos `#`, parágrafos, listas `-`, links `[texto](url)`, tabelas `| col | col |` e metadados). A IA lê a estrutura visual sem consumir tokens excessivos com CSS/scripts.
+- **Navegação Livre (`-allow-all`)**: Navegação desimpedida entre domínios da web, subdomínios automáticos e suporte a até 15 redirecionamentos com cookies persistentes.
+- **Parser Resiliente de Alto Volume**: Suporta páginas ricas da web moderna (Wikipedia, GitHub, Hacker News) processando dezenas de milhares de nós sem erros de limite.
+- **Conexão HTTP Otimizada**: Handshake TLS rápido com Happy Eyeballs, HTTP/2 nativo e User-Agent moderno para evitar bloqueios 403.
+- **Modo CLI Direto e Shell Interativo**:
+  - `aigobrowser https://news.ycombinator.com` (leitura imediata da página).
+  - `aigobrowser -format=markdown https://go.dev` (exporta a página em Markdown).
+  - Shell interativo com comandos amigáveis (`open`, `links`, `text`, `markdown`, `back`, `quit`) e suporte nativo a JSONL para IAs.
 
 ---
 

@@ -38,16 +38,19 @@ type Form struct {
 	SubmitLabel string  `json:"submit_label,omitempty"`
 }
 type Page struct {
-	URL       string    `json:"url"`
-	Title     string    `json:"title"`
-	Text      string    `json:"text"`
-	Headings  []Heading `json:"headings"`
-	Links     []Link    `json:"links"`
-	Buttons   []Button  `json:"buttons,omitempty"`
-	Forms     []Form    `json:"forms"`
-	Status    int       `json:"status"`
-	Bytes     int       `json:"bytes"`
-	Truncated bool      `json:"truncated,omitempty"`
+	URL         string            `json:"url"`
+	Title       string            `json:"title"`
+	Description string            `json:"description,omitempty"`
+	Text        string            `json:"text"`
+	Markdown    string            `json:"markdown,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+	Headings    []Heading         `json:"headings"`
+	Links       []Link            `json:"links"`
+	Buttons     []Button          `json:"buttons,omitempty"`
+	Forms       []Form            `json:"forms"`
+	Status      int               `json:"status"`
+	Bytes       int               `json:"bytes"`
+	Truncated   bool              `json:"truncated,omitempty"`
 }
 
 type token struct {

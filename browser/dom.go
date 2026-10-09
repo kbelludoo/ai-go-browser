@@ -13,7 +13,7 @@ import (
 	"strings"
 )
 
-const maxDOMNodes = 12000
+const maxDOMNodes = 50000
 const maxDOMDepth = 128
 const maxQueryResults = 32
 
@@ -199,16 +199,35 @@ func domWalk(n *Node, hidden bool, fn func(*Node)) {
 	}
 }
 func (d *Document) Page(textLimit int) Page {
-	p := Page{URL: d.URL, Status: d.Status, Bytes: d.Bytes, Links: []Link{}, Headings: []Heading{}, Forms: []Form{}}
+	p := Page{URL: d.URL, Status: d.Status, Bytes: d.Bytes, Links: []Link{}, Headings: []Heading{}, Forms: []Form{}, Metadata: map[string]string{}}
 	d.links = map[string]*Node{}
 	d.fields = map[string]*Node{}
 	d.buttons = map[string]*Node{}
 	base, _ := url.Parse(d.URL)
-	// Collect title and base href. A base can only influence URL resolution.
+	// Collect title, meta and base href.
 	var findHead func(*Node)
 	findHead = func(n *Node) {
 		if n.Tag == "title" && p.Title == "" {
 			p.Title = norm(n.rawText(4096))
+		}
+		if n.Tag == "meta" {
+			name := strings.ToLower(n.prop("name"))
+			prop := strings.ToLower(n.prop("property"))
+			content := strings.TrimSpace(n.prop("content"))
+			if content != "" {
+				if name != "" {
+					p.Metadata[name] = content
+					if name == "description" && p.Description == "" {
+						p.Description = content
+					}
+				}
+				if prop != "" {
+					p.Metadata[prop] = content
+					if (prop == "og:description" || prop == "twitter:description") && p.Description == "" {
+						p.Description = content
+					}
+				}
+			}
 		}
 		if n.Tag == "base" && n.prop("href") != "" {
 			if next := resolve(base, n.prop("href")); next != "" {
@@ -324,12 +343,142 @@ func (d *Document) Page(textLimit int) Page {
 			p.Forms = append(p.Forms, f)
 		}
 	})
+	p.Markdown = d.Markdown()
 	p.Text = norm(strings.Join(parts, " "))
 	if textLimit > 0 && len([]rune(p.Text)) > textLimit {
 		p.Text = string([]rune(p.Text)[:textLimit])
 		p.Truncated = true
 	}
 	return p
+}
+
+// Markdown converts the DOM into clean, structured Markdown for AI agents.
+func (d *Document) Markdown() string {
+	if d == nil || d.Root == nil {
+		return ""
+	}
+	base, _ := url.Parse(d.URL)
+	var b strings.Builder
+
+	var walk func(n *Node, inPre bool)
+	walk = func(n *Node, inPre bool) {
+		if n == nil || n.hidden() {
+			return
+		}
+		if n.Tag == "#text" {
+			txt := n.Text
+			if !inPre {
+				txt = norm(txt)
+			}
+			if txt != "" {
+				b.WriteString(txt)
+			}
+			return
+		}
+
+		switch n.Tag {
+		case "h1", "h2", "h3", "h4", "h5", "h6":
+			level := int(n.Tag[1] - '0')
+			b.WriteString("\n\n" + strings.Repeat("#", level) + " ")
+			for _, ch := range n.Children {
+				walk(ch, inPre)
+			}
+			b.WriteString("\n\n")
+		case "p":
+			b.WriteString("\n\n")
+			for _, ch := range n.Children {
+				walk(ch, inPre)
+			}
+			b.WriteString("\n\n")
+		case "br":
+			b.WriteString("\n")
+		case "hr":
+			b.WriteString("\n\n---\n\n")
+		case "li":
+			b.WriteString("\n- ")
+			for _, ch := range n.Children {
+				walk(ch, inPre)
+			}
+		case "blockquote":
+			b.WriteString("\n> ")
+			for _, ch := range n.Children {
+				walk(ch, inPre)
+			}
+			b.WriteString("\n")
+		case "pre":
+			b.WriteString("\n```\n")
+			for _, ch := range n.Children {
+				walk(ch, true)
+			}
+			b.WriteString("\n```\n")
+		case "code":
+			if !inPre {
+				b.WriteString("`")
+				for _, ch := range n.Children {
+					walk(ch, true)
+				}
+				b.WriteString("`")
+			} else {
+				for _, ch := range n.Children {
+					walk(ch, true)
+				}
+			}
+		case "strong", "b":
+			b.WriteString("**")
+			for _, ch := range n.Children {
+				walk(ch, inPre)
+			}
+			b.WriteString("**")
+		case "em", "i":
+			b.WriteString("*")
+			for _, ch := range n.Children {
+				walk(ch, inPre)
+			}
+			b.WriteString("*")
+		case "a":
+			href := resolve(base, n.prop("href"))
+			label := n.innerText(256)
+			if label == "" {
+				label = href
+			}
+			if href != "" && label != "" {
+				b.WriteString("[" + label + "](" + href + ")")
+			} else {
+				for _, ch := range n.Children {
+					walk(ch, inPre)
+				}
+			}
+		case "tr":
+			b.WriteString("\n|")
+			for _, ch := range n.Children {
+				if ch.Tag == "td" || ch.Tag == "th" {
+					b.WriteString(" " + norm(ch.innerText(256)) + " |")
+				}
+			}
+		default:
+			for _, ch := range n.Children {
+				walk(ch, inPre)
+			}
+		}
+	}
+
+	walk(d.Root, false)
+	lines := strings.Split(b.String(), "\n")
+	var cleaned []string
+	blank := false
+	for _, l := range lines {
+		trimmed := strings.TrimRight(l, " \t\r")
+		if strings.TrimSpace(trimmed) == "" {
+			if !blank && len(cleaned) > 0 {
+				cleaned = append(cleaned, "")
+				blank = true
+			}
+		} else {
+			cleaned = append(cleaned, trimmed)
+			blank = false
+		}
+	}
+	return strings.TrimSpace(strings.Join(cleaned, "\n"))
 }
 func (n *Node) rawText(limit int) string {
 	var b strings.Builder

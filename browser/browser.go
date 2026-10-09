@@ -2,10 +2,12 @@ package browser
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -16,7 +18,7 @@ import (
 	"time"
 )
 
-const MaxBody = 2 << 20
+const MaxBody = 5 << 20
 
 type Command struct {
 	Cmd      string `json:"cmd"`
@@ -50,8 +52,10 @@ type Browser struct {
 	Document          *Document
 	History           []string
 	Allowed           map[string]bool
+	AllowAll          bool
 	AllowPost         bool
 	MaxText           int
+	UserAgent         string
 	ScanScripts       bool
 	scannedScripts    bool
 	scannedScriptText string
@@ -71,11 +75,30 @@ func New(allowed []string, allowPost bool) *Browser {
 	for _, h := range allowed {
 		if h = strings.ToLower(strings.TrimSpace(h)); h != "" {
 			b.Allowed[h] = true
+			if h == "*" {
+				b.AllowAll = true
+			}
 		}
 	}
-	b.client = &http.Client{Timeout: 10 * time.Second, Jar: jar}
+	dialer := &net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	tr := &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           dialer.DialContext,
+		ForceAttemptHTTP2:     true,
+		MaxIdleConns:          50,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		TLSClientConfig: &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		},
+	}
+	b.client = &http.Client{Timeout: 20 * time.Second, Jar: jar, Transport: tr}
 	b.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
-		if len(via) > 8 {
+		if len(via) > 15 {
 			return errors.New("many redirects")
 		}
 		return b.validate(req.URL)
@@ -89,16 +112,28 @@ func (b *Browser) validate(u *url.URL) error {
 	if u.User != nil {
 		return errors.New("credentials in URL not allowed")
 	}
+	if b.AllowAll || b.Allowed["*"] {
+		return nil
+	}
 	// Fail closed by default: an AI agent must explicitly opt in to network hosts.
 	// This is NOT a complete SSRF defense (DNS rebinding/private address
 	// resolution require controls at the network or container boundary).
 	if len(b.Allowed) == 0 {
 		return errors.New("network disabled: set -allow-hosts to authorize destinations")
 	}
-	if !b.Allowed[strings.ToLower(u.Hostname())] {
-		return fmt.Errorf("host %s not on allowlist", u.Hostname())
+	host := strings.ToLower(u.Hostname())
+	if b.Allowed[host] {
+		return nil
 	}
-	return nil
+	for allowed := range b.Allowed {
+		if strings.HasPrefix(allowed, "*.") && strings.HasSuffix(host, allowed[1:]) {
+			return nil
+		}
+		if strings.HasSuffix(host, "."+allowed) {
+			return nil
+		}
+	}
+	return fmt.Errorf("host %s not on allowlist", u.Hostname())
 }
 func (b *Browser) request(method, target string, params url.Values, saveHistory bool) error {
 	u, err := url.Parse(target)
@@ -125,7 +160,13 @@ func (b *Browser) request(method, target string, params url.Values, saveHistory 
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "AIGoBrowser/0.1 (+headless-agent; HTML-only)")
+	ua := b.UserAgent
+	if ua == "" {
+		ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+	}
+	req.Header.Set("User-Agent", ua)
+	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9,pt-BR;q=0.8,pt;q=0.7")
 	if method == "POST" {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	}
@@ -305,8 +346,16 @@ func (b *Browser) Execute(c Command) Result {
 		last := b.History[len(b.History)-1]
 		b.History = b.History[:len(b.History)-1]
 		err = b.request("GET", last, nil, false)
+	case "markdown":
+		if b.Current == nil {
+			err = errors.New("no page open")
+		}
+	case "text":
+		if b.Current == nil {
+			err = errors.New("no page open")
+		}
 	case "help":
-		r.Help = []string{`{"cmd":"open","url":"http://..."}`, `{"cmd":"snapshot"}`, `{"cmd":"discover"}`, `{"cmd":"inspect","ref":"a1"}`, `{"cmd":"run","ref":"a1","confirm":true}`, `{"cmd":"query","selector":"form input[name=q]"}`, `{"cmd":"click","ref":"l1"}`, `{"cmd":"press","ref":"b1"}`, `{"cmd":"fill","ref":"i1","value":"value"}`, `{"cmd":"submit","ref":"f1","confirm":true}`, `{"cmd":"back"}`, `{"cmd":"quit"}`}
+		r.Help = []string{`{"cmd":"open","url":"http://..."}`, `{"cmd":"snapshot"}`, `{"cmd":"markdown"}`, `{"cmd":"text"}`, `{"cmd":"discover"}`, `{"cmd":"inspect","ref":"a1"}`, `{"cmd":"run","ref":"a1","confirm":true}`, `{"cmd":"query","selector":"form input[name=q]"}`, `{"cmd":"click","ref":"l1"}`, `{"cmd":"press","ref":"b1"}`, `{"cmd":"fill","ref":"i1","value":"value"}`, `{"cmd":"submit","ref":"f1","confirm":true}`, `{"cmd":"back"}`, `{"cmd":"quit"}`}
 	case "quit":
 		b.closeJSSession()
 	default:
@@ -329,7 +378,10 @@ func (b *Browser) Execute(c Command) Result {
 func mem() Memory {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
-	out := Memory{HeapMiB: float64(m.HeapAlloc) / 1048576}
+	out := Memory{
+		HeapMiB: float64(m.HeapAlloc) / 1048576,
+		RSSMiB:  float64(m.Sys) / 1048576,
+	}
 	data, err := os.ReadFile("/proc/self/status")
 	if err == nil {
 		for _, line := range bytes.Split(data, []byte("\n")) {

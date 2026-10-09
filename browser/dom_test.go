@@ -87,7 +87,7 @@ func TestDOMLimitsAndUnsupportedSelectors(t *testing.T) {
 	if _, e := ParseDocument([]byte(nested), "https://example.org", 200, len(nested)); e == nil {
 		t.Fatal("nesting limit not enforced")
 	}
-	many := strings.Repeat("<span>x</span>", 8000)
+	many := strings.Repeat("<span>x</span>", 26000)
 	if _, e := ParseDocument([]byte(many), "https://example.org", 200, len(many)); e == nil {
 		t.Fatal("node limit not enforced")
 	}
