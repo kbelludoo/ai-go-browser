@@ -185,6 +185,9 @@ func (b *Browser) request(method, target string, params url.Values, saveHistory 
 	if len(data) > MaxBody {
 		return fmt.Errorf("response exceeds %d bytes", MaxBody)
 	}
+	// Normalize encoding (convert ISO-8859-1 / Windows-1252 to valid UTF-8)
+	encoding, data := DetectAndNormalizeEncoding(res.Header.Get("Content-Type"), data)
+
 	// Execute explicitly enabled inline JavaScript before extracting the agent snapshot.
 	originalLen := len(data)
 	data, b.lastJS = b.runInlineJS(data, res.Request.URL.String())
@@ -193,6 +196,7 @@ func (b *Browser) request(method, target string, params url.Values, saveHistory 
 		return err
 	}
 	p := d.Page(b.MaxText)
+	p.Stack = AnalyzeTechStack(string(data), len([]rune(p.Text)), encoding)
 	b.rawHTML = append([]byte(nil), data...)
 	b.scannedScripts = false
 	b.scannedScriptText = ""

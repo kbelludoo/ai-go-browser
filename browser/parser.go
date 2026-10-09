@@ -37,6 +37,14 @@ type Form struct {
 	Fields      []Field `json:"fields"`
 	SubmitLabel string  `json:"submit_label,omitempty"`
 }
+type TechStack struct {
+	Framework    string  `json:"framework,omitempty"`
+	RenderMode   string  `json:"render_mode,omitempty"`
+	Encoding     string  `json:"encoding,omitempty"`
+	ContentYield float64 `json:"content_yield"`
+	Notice       string  `json:"notice,omitempty"`
+}
+
 type Page struct {
 	URL         string            `json:"url"`
 	Title       string            `json:"title"`
@@ -44,6 +52,7 @@ type Page struct {
 	Text        string            `json:"text"`
 	Markdown    string            `json:"markdown,omitempty"`
 	Metadata    map[string]string `json:"metadata,omitempty"`
+	Stack       TechStack         `json:"stack"`
 	Headings    []Heading         `json:"headings"`
 	Links       []Link            `json:"links"`
 	Buttons     []Button          `json:"buttons,omitempty"`

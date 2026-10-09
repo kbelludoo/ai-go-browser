@@ -117,6 +117,13 @@ func printPrettyPage(p *browser.Page, showMarkdown bool) {
 	if p.Description != "" {
 		fmt.Printf("Descrição: %s\n", p.Description)
 	}
+	if p.Stack.Framework != "" {
+		fmt.Printf("Tecnologia: %s (%s) | Encoding: %s | Rendimento de Texto: %.1f%%\n",
+			p.Stack.Framework, p.Stack.RenderMode, p.Stack.Encoding, p.Stack.ContentYield)
+	}
+	if p.Stack.Notice != "" {
+		fmt.Printf("⚠️  Aviso: %s\n", p.Stack.Notice)
+	}
 	if len(p.Headings) > 0 {
 		fmt.Print("Seções: ")
 		var heads []string
