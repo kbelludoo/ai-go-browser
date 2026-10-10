@@ -54,6 +54,8 @@ func dialCDP(ctx context.Context, wsURL string) (*cdpConn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cdp dial: %w", err)
 	}
+	// CDP frames (DOM snapshots, evaluate results) exceed the 32KB default.
+	ws.SetReadLimit(64 << 20)
 	c := &cdpConn{
 		ws:      ws,
 		pending: make(map[int]chan cdpMessage),
@@ -365,17 +367,27 @@ func (s *StealthSession) Evaluate(ctx context.Context, expr string) (json.RawMes
 			Unserializable string          `json:"unserializableValue"`
 		} `json:"result"`
 		ExceptionDetails *struct {
-			Text        string `json:"text"`
-			Description string `json:"exception"`
+			Text      string `json:"text"`
+			Exception *struct {
+				Description string          `json:"description"`
+				Value       json.RawMessage `json:"value"`
+			} `json:"exception"`
 		} `json:"exceptionDetails"`
 	}
 	if err := json.Unmarshal(res, &out); err != nil {
 		return nil, err
 	}
 	if out.ExceptionDetails != nil {
-		d := out.ExceptionDetails.Description
-		if d == "" {
-			d = out.ExceptionDetails.Text
+		d := out.ExceptionDetails.Text
+		if out.ExceptionDetails.Exception != nil {
+			if out.ExceptionDetails.Exception.Description != "" {
+				d = out.ExceptionDetails.Exception.Description
+			} else {
+				var v string
+				if json.Unmarshal(out.ExceptionDetails.Exception.Value, &v) == nil && v != "" {
+					d = v
+				}
+			}
 		}
 		return nil, fmt.Errorf("evaluate: %s", d)
 	}

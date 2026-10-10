@@ -1,0 +1,3 @@
+[arenaservice] 2026/10/09 22:12:54.536015 logged in as  (brunofonsecadesouza89@gmail.com)
+[arenaservice] 2026/10/09 22:12:54.537701 listening on :18091
+[arenaservice] 2026/10/09 22:15:52.166468 recaptcha sitekey discovered live: 6LeTGMcs...
