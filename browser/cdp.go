@@ -46,6 +46,7 @@ type cdpConn struct {
 	pending map[int]chan cdpMessage
 	events  chan cdpMessage
 	closed  chan struct{}
+	readErr error
 }
 
 func dialCDP(ctx context.Context, wsURL string) (*cdpConn, error) {
@@ -68,6 +69,7 @@ func (c *cdpConn) readLoop() {
 	for {
 		_, data, err := c.ws.Read(context.Background())
 		if err != nil {
+			c.readErr = err
 			return
 		}
 		var msg cdpMessage
@@ -125,7 +127,7 @@ func (c *cdpConn) send(ctx context.Context, method string, params map[string]any
 		c.dropPending(id)
 		return nil, ctx.Err()
 	case <-c.closed:
-		return nil, errors.New("cdp connection closed")
+		return nil, fmt.Errorf("cdp connection closed: %v", c.readErr)
 	}
 }
 
@@ -147,7 +149,7 @@ func (c *cdpConn) waitEvent(ctx context.Context, method string, timeout time.Dur
 		case <-tctx.Done():
 			return cdpMessage{}, fmt.Errorf("timeout waiting for %s", method)
 		case <-c.closed:
-			return cdpMessage{}, errors.New("cdp connection closed")
+			return cdpMessage{}, fmt.Errorf("cdp connection closed: %v", c.readErr)
 		}
 	}
 }
@@ -225,6 +227,10 @@ func LaunchStealth(ctx context.Context, cfg StealthConfig) (*StealthSession, err
 	proc := exec.Command(browserPath, args...)
 	proc.Stdout = nil
 	proc.Stderr = nil
+	if os.Getenv("AIGOBROWSER_CDP_DEBUG") != "" {
+		proc.Stdout = os.Stderr
+		proc.Stderr = os.Stderr
+	}
 	if err := proc.Start(); err != nil {
 		os.RemoveAll(userDataDir)
 		return nil, fmt.Errorf("launch browser: %w", err)

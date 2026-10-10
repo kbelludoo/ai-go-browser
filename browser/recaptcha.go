@@ -86,7 +86,7 @@ func (m *RecaptchaMint) mintOnce(ctx context.Context) (string, error) {
 	defer s.Close()
 
 	if err := s.Navigate(mctx, m.referrer()); err != nil {
-		return "", err
+		return "", fmt.Errorf("navigate: %w", err)
 	}
 	// Warm the session: recaptcha scripts load async and telemetry wants a
 	// page that has actually been "used" for a moment.
@@ -96,7 +96,7 @@ func (m *RecaptchaMint) mintOnce(ctx context.Context) (string, error) {
 	expr := recaptchaExecJS(m.SiteKey, m.Action)
 	raw, err := s.Evaluate(mctx, expr)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("evaluate: %w", err)
 	}
 	var token string
 	if err := json.Unmarshal(raw, &token); err != nil {

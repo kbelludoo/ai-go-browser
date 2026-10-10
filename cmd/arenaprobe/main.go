@@ -75,7 +75,7 @@ func main() {
 	}
 	defer resp.Body.Close()
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 2000))
-	fmt.Printf("HTTP %d\n", resp.Status)
+	fmt.Printf("HTTP %s\n", resp.Status)
 	fmt.Printf("BODY: %s\n", string(respBody))
 
 	switch {
