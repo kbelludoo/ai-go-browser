@@ -17,9 +17,9 @@ import (
 	"strings"
 )
 
-const maxActions = 100
-const maxExternalScripts = 4
-const maxExternalScriptBytes = 256 << 10
+const maxActions = 200
+const maxExternalScripts = 50
+const maxExternalScriptBytes = 512 << 10
 const maxResourceBytes = 96 << 10
 
 type Action struct {
@@ -68,6 +68,7 @@ var (
 	byIDEvent        = regexp.MustCompile(`(?s)(?:getElementById\s*\(\s*['"]([^'"]+)['"]\s*\)|querySelector\s*\(\s*['"]#([^'"]+)['"]\s*\))\s*\.\s*addEventListener\s*\(\s*['"]click['"]`)
 	functionPattern  = regexp.MustCompile(`\bfunction\s+([A-Za-z_$][\w$]*)\s*\(`)
 	callNamePattern  = regexp.MustCompile(`^\s*([A-Za-z_$][\w$]*)\s*\(\s*\)\s*;?\s*$`)
+	apiEndpointPattern = regexp.MustCompile(`['"\x60]((?:/api/|/nextjs-api/|/v1/|/v2/)[a-zA-Z0-9_\-\/]+)['"\x60]`)
 )
 
 // stripJSComments removes comments while preserving string literals and offsets.
@@ -203,6 +204,21 @@ func extractJSCalls(s string) []jsCall {
 				continue
 			}
 			calls = append(calls, jsCall{method: strings.ToUpper(m[1]), target: m[2], evidence: p.kind + "(literal URL)"})
+		}
+	}
+	seenEndpoints := map[string]bool{}
+	for _, call := range calls {
+		seenEndpoints[call.target] = true
+	}
+	for _, m := range apiEndpointPattern.FindAllStringSubmatch(s, 60) {
+		ep := m[1]
+		if !seenEndpoints[ep] && !strings.Contains(ep, "${") {
+			seenEndpoints[ep] = true
+			method := "POST"
+			if strings.Contains(ep, "catalog") || strings.Contains(ep, "me") || strings.Contains(ep, "list") || strings.Contains(ep, "get") {
+				method = "GET"
+			}
+			calls = append(calls, jsCall{method: method, target: ep, evidence: "API route literal in JS bundle"})
 		}
 	}
 	return calls
