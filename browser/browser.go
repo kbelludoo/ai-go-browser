@@ -224,9 +224,14 @@ func (b *Browser) RenderPageWithJS(targetURL string) error {
 	if err = b.validate(u); err != nil {
 		return err
 	}
-	rendered, err := RenderHeadless(b.SystemBrowser, targetURL, 15*time.Second)
-	if err != nil {
-		return err
+	rendered, rerr := RenderStealth(b.SystemBrowser, targetURL, 25*time.Second)
+	if rerr != nil {
+		// Fallback: the old --dump-dom path still works on sites without JS bot detection.
+		var err error
+		rendered, err = RenderHeadless(b.SystemBrowser, targetURL, 15*time.Second)
+		if err != nil {
+			return fmt.Errorf("stealth render failed (%v); headless fallback failed: %w", rerr, err)
+		}
 	}
 	d, err := ParseDocument(rendered, targetURL, 200, len(rendered))
 	if err != nil {

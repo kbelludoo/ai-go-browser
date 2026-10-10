@@ -6,11 +6,14 @@ package browser
 // scripting event loop, custom elements, shadow DOM or CSS layout.
 
 import (
+	"bytes"
 	"errors"
 	"html"
 	"net/url"
 	"strconv"
 	"strings"
+
+	xhtml "golang.org/x/net/html"
 )
 
 const maxDOMNodes = 50000
@@ -114,79 +117,72 @@ func autoCloses(newTag, top string) bool {
 }
 func ParseDocument(raw []byte, baseURL string, status, bytesRead int) (*Document, error) {
 	d := &Document{Root: &Node{Tag: "#document"}, URL: baseURL, Status: status, Bytes: bytesRead}
-	stack := []*Node{d.Root}
-	src := string(raw)
-	lower := strings.ToLower(src)
-	pos, count := 0, 1
-	for pos < len(src) {
-		tok := nextToken(src, &pos)
-		if tok.tag == "" {
-			if tok.text != "" {
-				count++
-				stack[len(stack)-1].add(&Node{Tag: "#text", Text: tok.text})
-			}
-			if count > maxDOMNodes {
-				return nil, errors.New("HTML node limit reached")
-			}
-			continue
-		}
-		if strings.HasPrefix(tok.tag, "!") {
-			continue
-		}
-		if tok.end {
-			for i := len(stack) - 1; i > 0; i-- {
-				if stack[i].Tag == tok.tag {
-					stack = stack[:i]
-					break
-				}
-			}
-			continue
-		}
-		// HTML raw-text elements can contain '<' and fake tags. Consume them
-		// as text, not markup, and never emit their content in the agent view.
-		if tok.tag == "script" || tok.tag == "style" || tok.tag == "textarea" || tok.tag == "title" {
-			if !tok.selfClose {
-				ending := "</" + tok.tag
-				idx := strings.Index(lower[pos:], ending)
-				end := len(src)
-				if idx >= 0 {
-					end = pos + idx
-				}
-				n := &Node{Tag: tok.tag, Attr: tok.attrs}
-				stack[len(stack)-1].add(n)
-				n.add(&Node{Tag: "#text", Text: html.UnescapeString(src[pos:end])})
-				count += 2
-				pos = end
-				// The next iteration consumes the matching closing token.
-				if idx >= 0 {
-					closeTok := nextToken(src, &pos)
-					if !closeTok.end || closeTok.tag != tok.tag {
-						return nil, errors.New("invalid raw text close tag")
-					}
-				}
-			}
-			if count > maxDOMNodes {
-				return nil, errors.New("HTML node limit reached")
-			}
-			continue
-		}
-		for len(stack) > 1 && autoCloses(tok.tag, stack[len(stack)-1].Tag) {
-			stack = stack[:len(stack)-1]
-		}
-		parent := stack[len(stack)-1]
-		n := &Node{Tag: tok.tag, Attr: tok.attrs}
-		parent.add(n)
-		count++
-		if count > maxDOMNodes {
-			return nil, errors.New("HTML node limit reached")
-		}
-		if !tok.selfClose && !voidTag(tok.tag) {
-			if len(stack) >= maxDOMDepth {
-				return nil, errors.New("HTML nesting limit reached")
-			}
-			stack = append(stack, n)
-		}
+
+	doc, err := xhtml.Parse(bytes.NewReader(raw))
+	if err != nil {
+		return nil, err
 	}
+
+	nodeCount := 0
+	var buildTree func(*xhtml.Node, *Node, int) error
+	buildTree = func(src *xhtml.Node, dstParent *Node, depth int) error {
+		if nodeCount > maxDOMNodes {
+			return errors.New("HTML node limit reached")
+		}
+		if depth > maxDOMDepth {
+			return errors.New("HTML nesting limit reached")
+		}
+
+		var currentDst *Node
+		switch src.Type {
+		case xhtml.ElementNode:
+			attrMap := make(map[string]string, len(src.Attr))
+			for _, a := range src.Attr {
+				attrMap[strings.ToLower(a.Key)] = a.Val
+			}
+			currentDst = &Node{
+				Tag:  strings.ToLower(src.Data),
+				Attr: attrMap,
+			}
+			dstParent.add(currentDst)
+			nodeCount++
+
+		case xhtml.TextNode:
+			text := src.Data
+			if strings.TrimSpace(text) != "" {
+				currentDst = &Node{
+					Tag:  "#text",
+					Text: text,
+				}
+				dstParent.add(currentDst)
+				nodeCount++
+			}
+			return nil
+
+		case xhtml.DocumentNode:
+			currentDst = dstParent
+
+		case xhtml.CommentNode, xhtml.DoctypeNode:
+			return nil
+		}
+
+		nextDepth := depth
+		if currentDst != dstParent {
+			nextDepth++
+		}
+
+		for c := src.FirstChild; c != nil; c = c.NextSibling {
+			if err := buildTree(c, currentDst, nextDepth); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	if err := buildTree(doc, d.Root, 0); err != nil {
+		return nil, err
+	}
+
 	return d, nil
 }
 func domWalk(n *Node, hidden bool, fn func(*Node)) {
