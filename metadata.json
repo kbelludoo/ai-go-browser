@@ -1,0 +1,8 @@
+{
+  "name": "AI Go Browser",
+  "description": "Universal hybrid headless browser and semantic automation suite for AI agents with 3-layer architecture, action discovery, token reduction benchmark, and live DOM inspector.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
