@@ -260,6 +260,7 @@ func (s *server) handleAsk(w http.ResponseWriter, r *http.Request) {
 		Prompt         string `json:"prompt"`
 		Mode           string `json:"mode"`
 		Modality       string `json:"modality"`
+		Model          string `json:"model"`
 		RecaptchaToken string `json:"recaptcha_token"`
 		Cookie         string `json:"cookie"`
 	}
@@ -286,7 +287,7 @@ func (s *server) handleAsk(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
 
-	res, err := s.runEvaluation(ctx, body.Prompt, body.Mode, body.Modality, recaptchaToken, func(ev arena.StreamEvent) error {
+	res, err := s.runEvaluation(ctx, body.Prompt, body.Mode, body.Modality, body.Model, recaptchaToken, func(ev arena.StreamEvent) error {
 		return nil
 	})
 	if err != nil {
@@ -331,7 +332,7 @@ func (s *server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	start := time.Now()
-	res, err := s.runEvaluation(ctx, prompt, modeFromModel(req.Model), "chat", recaptchaToken, func(ev arena.StreamEvent) error {
+	res, err := s.runEvaluation(ctx, prompt, modeFromModel(req.Model), "chat", req.Model, recaptchaToken, func(ev arena.StreamEvent) error {
 		return nil
 	})
 	if err != nil {
@@ -375,7 +376,7 @@ func (s *server) streamChatCompletion(ctx context.Context, w http.ResponseWriter
 	id := "chatcmpl-" + fmt.Sprintf("%d", time.Now().UnixNano())
 	created := time.Now().Unix()
 
-	res, err := s.runEvaluation(ctx, prompt, modeFromModel(req.Model), "chat", recaptchaToken, func(ev arena.StreamEvent) error {
+	res, err := s.runEvaluation(ctx, prompt, modeFromModel(req.Model), "chat", req.Model, recaptchaToken, func(ev arena.StreamEvent) error {
 		switch ev.Kind {
 		case "delta":
 			switch ev.Model {
@@ -436,9 +437,9 @@ func writeOAIChunk(w io.Writer, id string, created int64, model string, index in
 
 // --- evaluation core ---
 
-func (s *server) runEvaluation(ctx context.Context, prompt, mode, modality, recaptchaToken string, onEvent func(arena.StreamEvent) error) (askResult, error) {
+func (s *server) runEvaluation(ctx context.Context, prompt, mode, modality, modelA, recaptchaToken string, onEvent func(arena.StreamEvent) error) (askResult, error) {
 	if s.cfg.noBrowser || s.cfg.httpBridge || recaptchaToken != "" {
-		return s.runEvaluationHTTP(ctx, prompt, mode, modality, recaptchaToken, onEvent)
+		return s.runEvaluationHTTP(ctx, prompt, mode, modality, modelA, recaptchaToken, onEvent)
 	}
 	return s.runEvaluationBrowser(ctx, prompt, mode, modality, onEvent)
 }
@@ -561,7 +562,7 @@ func (s *server) resetBrowserSession(ctx context.Context) error {
 // runEvaluationHTTP is the legacy path: Go HTTP client session + detached
 // sidecar token mint. Kept for debugging; the server may reject the token
 // when it is not minted inside the session browser.
-func (s *server) runEvaluationHTTP(ctx context.Context, prompt, mode, modality, recaptchaToken string, onEvent func(arena.StreamEvent) error) (askResult, error) {
+func (s *server) runEvaluationHTTP(ctx context.Context, prompt, mode, modality, modelA, recaptchaToken string, onEvent func(arena.StreamEvent) error) (askResult, error) {
 	if err := s.ensureSession(); err != nil {
 		return askResult{}, err
 	}
@@ -583,6 +584,7 @@ func (s *server) runEvaluationHTTP(ctx context.Context, prompt, mode, modality, 
 			Prompt:           prompt,
 			Mode:             mode,
 			Modality:         modality,
+			ModelA:           modelA,
 			RecaptchaV3Token: token,
 		})
 		if err != nil {

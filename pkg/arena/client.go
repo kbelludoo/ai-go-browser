@@ -237,6 +237,8 @@ type ChatRequest struct {
 	Prompt           string
 	Mode             string // "battle", "side-by-side", "direct"
 	Modality         string // "chat", "auto"
+	ModelA           string // "claude-sonnet-5" or ID for direct/sbs
+	ModelB           string // model B for sbs
 	RecaptchaV3Token string
 }
 
@@ -262,10 +264,25 @@ func (c *Client) CreateEvaluation(req ChatRequest) (*ChatResponse, error) {
 		"modality":        req.Modality,
 		"userMessageId":   NewUUIDv7(),
 		"modelAMessageId": NewUUIDv7(),
-		"modelBMessageId": NewUUIDv7(),
 		"userMessage": map[string]any{
 			"content": req.Prompt,
 		},
+	}
+	if req.Mode != "direct" {
+		payload["modelBMessageId"] = NewUUIDv7()
+	}
+	if req.ModelA != "" {
+		// Map known names to IDs if needed
+		modelID := req.ModelA
+		if modelID == "claude-sonnet-5" {
+			modelID = "019f19f2-41f1-7c6d-9891-48d02fd9952c"
+		} else if modelID == "claude-haiku-4-5-20251001" {
+			modelID = "0199e8e9-01ed-73e0-96ba-cf43b286bf10"
+		}
+		payload["modelAId"] = modelID
+	}
+	if req.ModelB != "" {
+		payload["modelBId"] = req.ModelB
 	}
 	if req.RecaptchaV3Token != "" {
 		payload["recaptchaV3Token"] = req.RecaptchaV3Token
