@@ -2,11 +2,31 @@
 bin/
 *.exe
 *.exe~
+*linux
 *.dll
 *.so
 *.dylib
 *.test
 *.out
+
+# Media & Screenshots
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+
+# Secrets, Sessions & Temporary Data
+*_session.json
+captured_*.json
+*.key
+*.pem
+*.env
+*.env.*
+
+# Node / Web UI
+node_modules/
+dist/
 
 # IDE and OS files
 .idea/

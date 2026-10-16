@@ -1,0 +1,106 @@
+*** Begin Patch
+*** Update File: C:/Users/kbell/Downloads/ai-go-browser-colecao-completa/current-project/ai-go-browser-action-resolver/browser/cdp.go
+@@
+-	writeMu sync.Mutex
++	writeGate chan struct{}
+@@
+ 	c := &cdpConn{
+ 		ws:      ws,
++		writeGate: make(chan struct{}, 1),
+@@
+ func (c *cdpConn) readLoop() {
+-	defer close(c.closed)
++	defer func() {
++		c.mu.Lock()
++		clear(c.pending)
++		c.mu.Unlock()
++		close(c.closed)
++	}()
+@@
+ func (c *cdpConn) send(ctx context.Context, method string, params map[string]any) (json.RawMessage, error) {
+-	c.mu.Lock()
+-	c.nextID++
+-	id := c.nextID
+-	ch := make(chan cdpMessage, 1)
+-	c.pending[id] = ch
+-	c.mu.Unlock()
+-
+-	payload := map[string]any{"id": id, "method": method}
+-	if params != nil {
+-		payload["params"] = params
+-	}
+-	buf, err := json.Marshal(payload)
+-	if err != nil {
+-		c.dropPending(id)
+-		return nil, err
+-	}
+-	c.writeMu.Lock()
+-	err = c.ws.Write(ctx, websocket.MessageText, buf)
+-	c.writeMu.Unlock()
+-	if err != nil {
+-		c.dropPending(id)
+-		return nil, fmt.Errorf("cdp write %s: %w", method, err)
+-	}
+-	select {
+-	case msg := <-ch:
+-		if msg.Error != nil {
+-			return nil, msg.Error
+-		}
+-		return msg.Result, nil
+-	case <-ctx.Done():
+-		c.dropPending(id)
+-		return nil, ctx.Err()
+-	case <-c.closed:
+-		return nil, fmt.Errorf("cdp connection closed: %v", c.readErr)
+-	}
++	return c.sendSession(ctx, "", method, params)
+@@
+ func (s *StealthSession) Evaluate(ctx context.Context, expr string) (json.RawMessage, error) {
+-	res, err := s.pageCDP.send(ctx, "Runtime.evaluate", map[string]any{
+-		"expression":    expr,
+-		"awaitPromise":  true,
+-		"returnByValue": true,
+-	})
+-	if err != nil {
+-		return nil, err
+-	}
+-	var out struct {
+-		Result struct {
+-			Type           string          `json:"type"`
+-			Subtype        string          `json:"subtype"`
+-			Value          json.RawMessage `json:"value"`
+-			Description    string          `json:"description"`
+-			Unserializable string          `json:"unserializableValue"`
+-		} `json:"result"`
+-		ExceptionDetails *struct {
+-			Text      string `json:"text"`
+-			Exception *struct {
+-				Description string          `json:"description"`
+-				Value       json.RawMessage `json:"value"`
+-			} `json:"exception"`
+-		} `json:"exceptionDetails"`
+-	}
+-	if err := json.Unmarshal(res, &out); err != nil {
+-		return nil, err
+-	}
+-	if out.ExceptionDetails != nil {
+-		d := out.ExceptionDetails.Text
+-		if out.ExceptionDetails.Exception != nil {
+-			if out.ExceptionDetails.Exception.Description != "" {
+-				d = out.ExceptionDetails.Exception.Description
+-			} else {
+-				var v string
+-				if json.Unmarshal(out.ExceptionDetails.Exception.Value, &v) == nil && v != "" {
+-					d = v
+-				}
+-			}
+-		}
+-		return nil, fmt.Errorf("evaluate: %s", d)
+-	}
+-	if out.Result.Subtype == "error" {
+-		return nil, fmt.Errorf("evaluate: %s", out.Result.Description)
+-	}
+-	return out.Result.Value, nil
++	return s.EvaluateContext(ctx, expr, 0)
+ }
+*** End Patch

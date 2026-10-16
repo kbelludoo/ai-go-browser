@@ -1,0 +1,59 @@
+name: ticket-relay
+
+# Descartável: 2 vCPU / 7 GB, existe só para roubar o turnstileToken.
+# Fluxo: Chromium real (xvfb) + cookie TIBIDLE_SESSION + hook de fetch →
+# POST <tunnel>/api/ticket → a VPS emite o world-ticket com o IP dela.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tunnel:
+        description: "Base do Cloudflare tunnel (default: secret TICKET_RELAY_TUNNEL)"
+        required: false
+        default: ""
+      game:
+        description: "URL base do jogo (default: secret TICKET_RELAY_GAME)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      TIBIDLE_SESSION: ${{ secrets.TIBIDLE_SESSION }}
+      TICKET_RELAY_TUNNEL: ${{ inputs.tunnel != '' && inputs.tunnel || secrets.TICKET_RELAY_TUNNEL }}
+      TICKET_RELAY_GAME: ${{ inputs.game != '' && inputs.game || secrets.TICKET_RELAY_GAME }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build relayrunner
+        run: CGO_ENABLED=0 go build -o relayrunner ./cmd/relayrunner
+
+      - name: Localizar Chromium
+        id: chrome
+        run: |
+          for p in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$p" >/dev/null 2>&1; then
+              echo "path=$(command -v "$p")" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "nenhum Chromium encontrado no runner" >&2
+          exit 1
+
+      - name: Roubar turnstileToken (Chromium + xvfb)
+        run: |
+          xvfb-run -a ./relayrunner \
+            -browser-path "${{ steps.chrome.outputs.path }}" \
+            -game "$TICKET_RELAY_GAME" \
+            -tunnel "$TICKET_RELAY_TUNNEL" \
+            -cookie "$TIBIDLE_SESSION" \
+            -timeout 100s
