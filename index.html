@@ -285,6 +285,12 @@
   <script>
     const SITE_KEY = "6LeTGMcsAAAAALuIlkVwIxaAuZA8VledA6d3Nnb0";
 
+    // Auto-detect origin when accessed directly via VPS or tunnel
+    if (window.location.port === "8080" || (!window.location.hostname.includes("github.io") && window.location.protocol.startsWith("http"))) {
+      const ep = document.getElementById("endpointInput");
+      if (ep) ep.value = window.location.origin;
+    }
+
     async function checkHealth() {
       const endpoint = document.getElementById("endpointInput").value.trim().replace(/\/$/, "");
       const dot = document.getElementById("statusDot");
