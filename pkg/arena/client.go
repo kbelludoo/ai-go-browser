@@ -10,6 +10,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -45,6 +47,44 @@ func NewClient() *Client {
 			Timeout: 45 * time.Second,
 		},
 		baseURL: "https://arena.ai",
+	}
+}
+
+// SetCookie adiciona um cookie à sessão do cliente HTTP.
+func (c *Client) SetCookie(name, value string) {
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		return
+	}
+	c.httpClient.Jar.SetCookies(u, []*http.Cookie{{
+		Name:   name,
+		Value:  value,
+		Path:   "/",
+		Domain: ".arena.ai",
+	}})
+}
+
+// SetRawCookies decodifica uma string de cabeçalho Cookie e injeta no jar.
+func (c *Client) SetRawCookies(rawCookies string) {
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		return
+	}
+	parts := strings.Split(rawCookies, ";")
+	var cookies []*http.Cookie
+	for _, p := range parts {
+		kv := strings.SplitN(strings.TrimSpace(p), "=", 2)
+		if len(kv) == 2 {
+			cookies = append(cookies, &http.Cookie{
+				Name:   kv[0],
+				Value:  kv[1],
+				Path:   "/",
+				Domain: ".arena.ai",
+			})
+		}
+	}
+	if len(cookies) > 0 {
+		c.httpClient.Jar.SetCookies(u, cookies)
 	}
 }
 

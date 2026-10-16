@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Go Browser — Arena.ai Headless Controller</title>
+  <script src="https://www.google.com/recaptcha/enterprise.js?render=6LeTGMcsAAAAALuIlkVwIxaAuZA8VledA6d3Nnb0"></script>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #111827;
+      --card-border: #1f2937;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --success: #10b981;
+      --danger: #ef4444;
+      --model-a: #8b5cf6;
+      --model-b: #06b6d4;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: rgba(17, 24, 39, 0.8);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--card-border);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.025em;
+    }
+    .badge {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.5rem;
+      border-radius: 9999px;
+      background: rgba(59, 130, 246, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      font-weight: 600;
+    }
+    .vps-status {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-muted);
+    }
+    .status-dot.online { background: var(--success); box-shadow: 0 0 8px var(--success); }
+    .status-dot.offline { background: var(--danger); }
+    main {
+      flex: 1;
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 1.25rem;
+    }
+    .config-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1rem;
+    }
+    label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 0.4rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    input, select, textarea {
+      width: 100%;
+      background: #0d121f;
+      border: 1px solid var(--card-border);
+      color: var(--text);
+      padding: 0.65rem 0.85rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--accent);
+    }
+    .battle-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      min-height: 380px;
+    }
+    @media (max-width: 768px) {
+      .battle-grid { grid-template-columns: 1fr; }
+    }
+    .model-card {
+      background: #0d121f;
+      border: 1px solid var(--card-border);
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .model-header {
+      padding: 0.75rem 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--card-border);
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    .header-a { border-top: 3px solid var(--model-a); color: var(--model-a); }
+    .header-b { border-top: 3px solid var(--model-b); color: var(--model-b); }
+    .model-body {
+      padding: 1rem;
+      flex: 1;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-y: auto;
+      max-height: 480px;
+      color: #e5e7eb;
+    }
+    .model-body:empty::before {
+      content: "Aguardando resposta da IA...";
+      color: var(--text-muted);
+      font-style: italic;
+    }
+    .input-section {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .meta-info {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+    .btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 0.75rem 1.75rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.05s;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    footer {
+      text-align: center;
+      padding: 1.5rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      border-top: 1px solid var(--card-border);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <span>⚡ AI Go Browser</span>
+      <span class="badge">Headless 15MB RAM</span>
+    </div>
+    <div class="vps-status">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Verificando VPS...</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="card">
+      <div class="config-grid">
+        <div>
+          <label>Endpoint da VPS Linux (Go)</label>
+          <input type="text" id="endpointInput" value="http://147.15.109.14:8080" placeholder="http://147.15.109.14:8080">
+        </div>
+        <div>
+          <label>Modo de Avaliação</label>
+          <select id="modeSelect">
+            <option value="battle">Arena Battle (2 IAs Cegas)</option>
+            <option value="side-by-side">Side-by-Side</option>
+            <option value="direct">Direct Model</option>
+          </select>
+        </div>
+        <div>
+          <label>Cookie de Sessão (Arena Auth Cookie)</label>
+          <input type="password" id="cookieInput" placeholder="arena-auth-prod-v1.0=... (opcional)">
+        </div>
+      </div>
+    </div>
+
+    <div class="battle-grid">
+      <div class="model-card">
+        <div class="model-header header-a">
+          <span>Modelo A (Anônimo)</span>
+          <span class="badge" id="statsA">0 tokens</span>
+        </div>
+        <div class="model-body" id="outputA"></div>
+      </div>
+      <div class="model-card">
+        <div class="model-header header-b">
+          <span>Modelo B (Anônimo)</span>
+          <span class="badge" id="statsB">0 tokens</span>
+        </div>
+        <div class="model-body" id="outputB"></div>
+      </div>
+    </div>
+
+    <div class="card input-section">
+      <textarea id="promptInput" rows="3" placeholder="Digite seu prompt de teste ou benchmark para a IA na Arena..."></textarea>
+      <div class="controls">
+        <div class="meta-info" id="metaInfo">
+          Memória VPS: ~15MB (Zero Chromium na VPS). reCAPTCHA Enterprise mintado pelo seu navegador.
+        </div>
+        <button class="btn" id="sendBtn" onclick="submitPrompt()">
+          <span id="btnText">Enviar para Arena.ai</span>
+        </button>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    AI Go Browser &copy; 2026 — Motor de Automação Headless Ultraleve em Go + WebAssembly.
+  </footer>
+
+  <script>
+    const SITE_KEY = "6LeTGMcsAAAAALuIlkVwIxaAuZA8VledA6d3Nnb0";
+
+    async function checkHealth() {
+      const endpoint = document.getElementById("endpointInput").value.trim().replace(/\/$/, "");
+      const dot = document.getElementById("statusDot");
+      const txt = document.getElementById("statusText");
+      try {
+        const res = await fetch(`${endpoint}/health`, { signal: AbortSignal.timeout(4000) });
+        if (res.ok) {
+          const data = await res.json();
+          dot.className = "status-dot online";
+          txt.innerText = data.authenticated ? `VPS Online (${data.user || "Autenticado"})` : "VPS Online (Pronta)";
+          return;
+        }
+      } catch (e) {}
+      dot.className = "status-dot offline";
+      txt.innerText = "VPS Inacessível";
+    }
+
+    setInterval(checkHealth, 15000);
+    checkHealth();
+
+    async function getRecaptchaToken() {
+      return new Promise((resolve, reject) => {
+        if (!window.grecaptcha || !window.grecaptcha.enterprise) {
+          return reject(new Error("reCAPTCHA Enterprise SDK não carregado"));
+        }
+        window.grecaptcha.enterprise.ready(async () => {
+          try {
+            const token = await window.grecaptcha.enterprise.execute(SITE_KEY, { action: "chat_submit" });
+            resolve(token);
+          } catch (err) {
+            reject(err);
+          }
+        });
+      });
+    }
+
+    async function submitPrompt() {
+      const prompt = document.getElementById("promptInput").value.trim();
+      if (!prompt) return;
+
+      const endpoint = document.getElementById("endpointInput").value.trim().replace(/\/$/, "");
+      const mode = document.getElementById("modeSelect").value;
+      const cookie = document.getElementById("cookieInput").value.trim();
+      const sendBtn = document.getElementById("sendBtn");
+      const btnText = document.getElementById("btnText");
+      const outA = document.getElementById("outputA");
+      const outB = document.getElementById("outputB");
+      const meta = document.getElementById("metaInfo");
+
+      outA.innerText = "";
+      outB.innerText = "";
+      sendBtn.disabled = true;
+      btnText.innerText = "Mintando reCAPTCHA...";
+      meta.innerText = "Executando verificação reCAPTCHA Enterprise no navegador cliente...";
+
+      let token = "";
+      try {
+        token = await getRecaptchaToken();
+      } catch (err) {
+        meta.innerText = "Erro ao mintar reCAPTCHA: " + err.message;
+        sendBtn.disabled = false;
+        btnText.innerText = "Enviar para Arena.ai";
+        return;
+      }
+
+      btnText.innerText = "Consultando Arena (VPS)...";
+      meta.innerText = "Enviando requisição para VPS Go sem Chromium...";
+      const t0 = performance.now();
+
+      try {
+        const payload = {
+          prompt: prompt,
+          mode: mode,
+          recaptcha_token: token,
+          cookie: cookie
+        };
+        const headers = { "Content-Type": "application/json" };
+        if (token) headers["X-Recaptcha-Token"] = token;
+        if (cookie) headers["X-Arena-Cookie"] = cookie;
+
+        const res = await fetch(`${endpoint}/ask`, {
+          method: "POST",
+          headers: headers,
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        const duration = Math.round(performance.now() - t0);
+
+        if (data.error) {
+          outA.innerText = "Erro retornado pela API:\n" + (data.error.message || data.error);
+          meta.innerText = `Falha na requisição (${duration}ms)`;
+        } else {
+          outA.innerText = data.model_a || "(Sem resposta do Modelo A)";
+          outB.innerText = data.model_b || "(Sem resposta do Modelo B)";
+          meta.innerText = `Concluído em ${duration}ms! Session ID: ${data.session_id || "N/A"}. VPS RAM intacta (~15MB).`;
+          document.getElementById("statsA").innerText = `${data.model_a ? data.model_a.length : 0} bytes`;
+          document.getElementById("statsB").innerText = `${data.model_b ? data.model_b.length : 0} bytes`;
+        }
+      } catch (err) {
+        outA.innerText = "Erro de conexão com a VPS:\n" + err.message;
+        meta.innerText = "Erro de conexão com o endpoint " + endpoint;
+      } finally {
+        sendBtn.disabled = false;
+        btnText.innerText = "Enviar para Arena.ai";
+      }
+    }
+  </script>
+</body>
+</html>

@@ -47,6 +47,7 @@ type config struct {
 	addr        string
 	email       string
 	password    string
+	cookie      string
 	browserPath string
 	action      string
 	siteKey     string
@@ -54,6 +55,7 @@ type config struct {
 	headful     bool
 	debugStream bool
 	httpBridge  bool
+	noBrowser   bool
 }
 
 type server struct {
@@ -127,6 +129,7 @@ func main() {
 	fs.StringVar(&cfg.addr, "addr", ":8080", "listen address")
 	fs.StringVar(&cfg.email, "email", os.Getenv("ARENA_EMAIL"), "arena.ai email (or ARENA_EMAIL)")
 	fs.StringVar(&cfg.password, "password", os.Getenv("ARENA_PASSWORD"), "arena.ai password (or ARENA_PASSWORD)")
+	fs.StringVar(&cfg.cookie, "cookie", os.Getenv("ARENA_COOKIE"), "arena.ai session cookie (or ARENA_COOKIE)")
 	fs.StringVar(&cfg.browserPath, "browser", "", "chromium binary path (default: system Edge/Chrome)")
 	fs.StringVar(&cfg.action, "recaptcha-action", "chat_submit", "reCAPTCHA v3/Enterprise action string")
 	fs.StringVar(&cfg.siteKey, "site-key", arenaSiteKey, "reCAPTCHA site key override (default: live-discovered, falls back to known key)")
@@ -134,21 +137,36 @@ func main() {
 	fs.BoolVar(&cfg.headful, "headful", false, "run the token sidecar visible (debugging)")
 	fs.BoolVar(&cfg.debugStream, "debug-stream", false, "log every raw stream event to stderr")
 	fs.BoolVar(&cfg.httpBridge, "http-bridge", false, "legacy mode: Go HTTP client + sidecar mint (no in-browser session)")
+	fs.BoolVar(&cfg.noBrowser, "no-browser", os.Getenv("ARENA_NO_BROWSER") != "", "disable any local browser (100% pure HTTP for 512MB/1GB VPS)")
 	_ = fs.Parse(os.Args[1:])
+
+	if cfg.noBrowser {
+		cfg.httpBridge = true
+	}
 
 	logger := log.New(os.Stderr, "[arenaservice] ", log.LstdFlags|log.Lmicroseconds)
 
 	client := arena.NewClient()
-	s := &server{
-		cfg:    cfg,
-		client: client,
-		mint: &browser.RecaptchaMint{
+	if cfg.cookie != "" {
+		client.SetRawCookies(cfg.cookie)
+		logger.Printf("loaded custom session cookie from flags/env (headless pure HTTP mode)")
+	}
+
+	var mint *browser.RecaptchaMint
+	if !cfg.noBrowser {
+		mint = &browser.RecaptchaMint{
 			BrowserPath: cfg.browserPath,
 			Headless:    !cfg.headful,
 			Action:      cfg.action,
 			SiteKey:     cfg.siteKey,
-		},
-		log: logger,
+		}
+	}
+
+	s := &server{
+		cfg:    cfg,
+		client: client,
+		mint:   mint,
+		log:    logger,
 	}
 
 	if cfg.email != "" && cfg.password != "" {
@@ -159,8 +177,10 @@ func main() {
 			s.setUser(user)
 			logger.Printf("logged in as %s (%s)", user.Username, user.Email)
 		}
+	} else if cfg.cookie != "" {
+		logger.Printf("running with session cookie — pure Go HTTP client without local browser")
 	} else {
-		logger.Printf("no credentials — /health will report unauthenticated; /ask will fail until ARENA_EMAIL/ARENA_PASSWORD are set")
+		logger.Printf("no credentials — /health will report unauthenticated; set ARENA_EMAIL/ARENA_PASSWORD or ARENA_COOKIE")
 	}
 
 	mux := http.NewServeMux()
@@ -237,9 +257,11 @@ func (s *server) handleModels(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) handleAsk(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Prompt   string `json:"prompt"`
-		Mode     string `json:"mode"`
-		Modality string `json:"modality"`
+		Prompt         string `json:"prompt"`
+		Mode           string `json:"mode"`
+		Modality       string `json:"modality"`
+		RecaptchaToken string `json:"recaptcha_token"`
+		Cookie         string `json:"cookie"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
 		s.writeAPIError(w, http.StatusBadRequest, fmt.Sprintf("invalid JSON: %v", err))
@@ -250,11 +272,21 @@ func (s *server) handleAsk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	recaptchaToken := body.RecaptchaToken
+	if recaptchaToken == "" {
+		recaptchaToken = r.Header.Get("X-Recaptcha-Token")
+	}
+	if body.Cookie != "" {
+		s.client.SetRawCookies(body.Cookie)
+	} else if c := r.Header.Get("X-Arena-Cookie"); c != "" {
+		s.client.SetRawCookies(c)
+	}
+
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
 
-	res, err := s.runEvaluation(ctx, body.Prompt, body.Mode, body.Modality, func(ev arena.StreamEvent) error {
+	res, err := s.runEvaluation(ctx, body.Prompt, body.Mode, body.Modality, recaptchaToken, func(ev arena.StreamEvent) error {
 		return nil
 	})
 	if err != nil {
@@ -285,16 +317,21 @@ func (s *server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		req.Model = "arena-battle"
 	}
 
+	recaptchaToken := r.Header.Get("X-Recaptcha-Token")
+	if c := r.Header.Get("X-Arena-Cookie"); c != "" {
+		s.client.SetRawCookies(c)
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
 
 	if req.Stream {
-		s.streamChatCompletion(ctx, w, req, prompt)
+		s.streamChatCompletion(ctx, w, req, prompt, recaptchaToken)
 		return
 	}
 
 	start := time.Now()
-	res, err := s.runEvaluation(ctx, prompt, modeFromModel(req.Model), "chat", func(ev arena.StreamEvent) error {
+	res, err := s.runEvaluation(ctx, prompt, modeFromModel(req.Model), "chat", recaptchaToken, func(ev arena.StreamEvent) error {
 		return nil
 	})
 	if err != nil {
@@ -324,7 +361,7 @@ func (s *server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *server) streamChatCompletion(ctx context.Context, w http.ResponseWriter, req oaiRequest, prompt string) {
+func (s *server) streamChatCompletion(ctx context.Context, w http.ResponseWriter, req oaiRequest, prompt, recaptchaToken string) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		s.writeOAIError(w, http.StatusInternalServerError, "streaming unsupported")
@@ -338,7 +375,7 @@ func (s *server) streamChatCompletion(ctx context.Context, w http.ResponseWriter
 	id := "chatcmpl-" + fmt.Sprintf("%d", time.Now().UnixNano())
 	created := time.Now().Unix()
 
-	res, err := s.runEvaluation(ctx, prompt, modeFromModel(req.Model), "chat", func(ev arena.StreamEvent) error {
+	res, err := s.runEvaluation(ctx, prompt, modeFromModel(req.Model), "chat", recaptchaToken, func(ev arena.StreamEvent) error {
 		switch ev.Kind {
 		case "delta":
 			switch ev.Model {
@@ -399,9 +436,9 @@ func writeOAIChunk(w io.Writer, id string, created int64, model string, index in
 
 // --- evaluation core ---
 
-func (s *server) runEvaluation(ctx context.Context, prompt, mode, modality string, onEvent func(arena.StreamEvent) error) (askResult, error) {
-	if s.cfg.httpBridge {
-		return s.runEvaluationHTTP(ctx, prompt, mode, modality, onEvent)
+func (s *server) runEvaluation(ctx context.Context, prompt, mode, modality, recaptchaToken string, onEvent func(arena.StreamEvent) error) (askResult, error) {
+	if s.cfg.noBrowser || s.cfg.httpBridge || recaptchaToken != "" {
+		return s.runEvaluationHTTP(ctx, prompt, mode, modality, recaptchaToken, onEvent)
 	}
 	return s.runEvaluationBrowser(ctx, prompt, mode, modality, onEvent)
 }
@@ -524,16 +561,23 @@ func (s *server) resetBrowserSession(ctx context.Context) error {
 // runEvaluationHTTP is the legacy path: Go HTTP client session + detached
 // sidecar token mint. Kept for debugging; the server may reject the token
 // when it is not minted inside the session browser.
-func (s *server) runEvaluationHTTP(ctx context.Context, prompt, mode, modality string, onEvent func(arena.StreamEvent) error) (askResult, error) {
+func (s *server) runEvaluationHTTP(ctx context.Context, prompt, mode, modality, recaptchaToken string, onEvent func(arena.StreamEvent) error) (askResult, error) {
 	if err := s.ensureSession(); err != nil {
 		return askResult{}, err
 	}
-	s.mint.SiteKey = s.discoverSiteKey()
 	attempt := func() (askResult, error) {
 		var out askResult
-		token, err := s.mint.Token(ctx)
-		if err != nil {
-			return out, fmt.Errorf("recaptcha token mint failed: %w", err)
+		token := recaptchaToken
+		if token == "" {
+			if s.cfg.noBrowser || s.mint == nil {
+				return out, errors.New("recaptcha_token required in headless no-browser mode. Provide 'recaptcha_token' in JSON or header 'X-Recaptcha-Token' (minted via GitHub Pages / client)")
+			}
+			s.mint.SiteKey = s.discoverSiteKey()
+			var err error
+			token, err = s.mint.Token(ctx)
+			if err != nil {
+				return out, fmt.Errorf("recaptcha token mint failed: %w", err)
+			}
 		}
 		resp, err := s.client.CreateEvaluation(arena.ChatRequest{
 			Prompt:           prompt,
@@ -584,8 +628,11 @@ func (s *server) ensureSession() error {
 	if s.currentUser() != nil {
 		return nil
 	}
+	if s.cfg.cookie != "" {
+		return nil
+	}
 	if s.cfg.email == "" || s.cfg.password == "" {
-		return errors.New("not authenticated: set ARENA_EMAIL and ARENA_PASSWORD")
+		return errors.New("not authenticated: set ARENA_EMAIL and ARENA_PASSWORD or provide session cookie")
 	}
 	return s.relogin()
 }
@@ -695,7 +742,7 @@ func (s *server) writeOAIError(w http.ResponseWriter, status int, msg string) {
 func (s *server) cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Recaptcha-Token, X-Arena-Cookie")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
