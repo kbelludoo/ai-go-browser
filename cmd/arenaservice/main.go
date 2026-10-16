@@ -184,6 +184,7 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", s.handleIndex)
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("GET /v1/models", s.handleModels)
 	mux.HandleFunc("POST /ask", s.handleAsk)
@@ -222,6 +223,29 @@ func main() {
 }
 
 // --- handlers ---
+
+func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" && r.URL.Path != "/index.html" {
+		http.NotFound(w, r)
+		return
+	}
+	candidates := []string{
+		"docs/index.html",
+		"../../docs/index.html",
+		"/home/ubuntu/ai-go-browser/docs/index.html",
+	}
+	for _, p := range candidates {
+		data, err := os.ReadFile(p)
+		if err == nil {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write(data)
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("AI Go Browser — Arena.ai Service Active"))
+}
 
 func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	user := s.currentUser()
