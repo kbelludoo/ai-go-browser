@@ -36,6 +36,7 @@ import (
 
 	"ai-go-browser/browser"
 	"ai-go-browser/pkg/arena"
+	"ai-go-browser/pkg/search"
 )
 
 // arenaSiteKey: reCAPTCHA Enterprise key recovered from the live arena.ai
@@ -59,10 +60,11 @@ type config struct {
 }
 
 type server struct {
-	cfg    config
-	client *arena.Client
-	mint   *browser.RecaptchaMint
-	log    *log.Logger
+	cfg          config
+	client       *arena.Client
+	mint         *browser.RecaptchaMint
+	searchEngine *search.Engine
+	log          *log.Logger
 
 	sessMu      sync.Mutex
 	user        *arena.User
@@ -163,10 +165,11 @@ func main() {
 	}
 
 	s := &server{
-		cfg:    cfg,
-		client: client,
-		mint:   mint,
-		log:    logger,
+		cfg:          cfg,
+		client:       client,
+		mint:         mint,
+		searchEngine: search.NewEngine(),
+		log:          logger,
 	}
 
 	if cfg.email != "" && cfg.password != "" {
@@ -187,6 +190,8 @@ func main() {
 	mux.HandleFunc("GET /", s.handleIndex)
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("GET /v1/models", s.handleModels)
+	mux.HandleFunc("GET /api/search", s.handleSearch)
+	mux.HandleFunc("POST /api/search", s.handleSearch)
 	mux.HandleFunc("POST /ask", s.handleAsk)
 	mux.HandleFunc("POST /v1/chat/completions", s.handleChatCompletions)
 
@@ -255,6 +260,37 @@ func (s *server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		healthy["email"] = user.Email
 	}
 	writeJSON(w, http.StatusOK, healthy)
+}
+
+func (s *server) handleSearch(w http.ResponseWriter, r *http.Request) {
+	var query string
+	if r.Method == http.MethodGet {
+		query = r.URL.Query().Get("q")
+	} else {
+		var req struct {
+			Query string `json:"query"`
+		}
+		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err == nil {
+			query = req.Query
+		}
+	}
+
+	query = strings.TrimSpace(query)
+	if query == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "informe o parâmetro 'q' ou campo 'query'"})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+
+	resp, err := s.searchEngine.Search(ctx, query)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *server) handleModels(w http.ResponseWriter, r *http.Request) {
