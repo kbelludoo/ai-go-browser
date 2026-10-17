@@ -8,7 +8,7 @@ import (
 
 func TestEngineSearch(t *testing.T) {
 	eng := NewEngine()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	resp, err := eng.Search(ctx, "Golang")
@@ -20,15 +20,12 @@ func TestEngineSearch(t *testing.T) {
 		t.Errorf("expected query 'Golang', got '%s'", resp.Query)
 	}
 
+	t.Logf("AI Summary:\n%s", resp.AISummary)
+
 	if len(resp.Results) == 0 {
 		t.Logf("no results returned (network may be restricted), but no error occurred")
 	} else {
 		t.Logf("found %d results in %d ms", len(resp.Results), resp.DurationMs)
-		for i, r := range resp.Results {
-			if i < 3 {
-				t.Logf("  [%s] %s -> %s", r.Source, r.Title, r.URL)
-			}
-		}
 	}
 
 	if resp.AISummary == "" {

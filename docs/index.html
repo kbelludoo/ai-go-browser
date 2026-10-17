@@ -611,6 +611,8 @@
         // Render AI Summary
         aiOverview.style.display = "block";
         aiSummary.innerText = data.ai_summary || "Nenhum resumo gerado.";
+        const modelBadge = document.getElementById("aiModelBadge");
+        if (modelBadge) modelBadge.innerText = "Agent-Go Connected (Kilo / NIM)";
 
         // Render Web Results
         resultsGrid.innerHTML = "";

@@ -1,13 +1,16 @@
 package search
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"html"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -33,14 +36,18 @@ type SearchResponse struct {
 
 // Engine performs multi-source web searches without heavy headless browsers.
 type Engine struct {
-	client *http.Client
+	webClient *http.Client
+	llmClient *http.Client
 }
 
 // NewEngine creates a new search engine instance with optimal timeouts.
 func NewEngine() *Engine {
 	return &Engine{
-		client: &http.Client{
-			Timeout: 12 * time.Second,
+		webClient: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+		llmClient: &http.Client{
+			Timeout: 60 * time.Second,
 		},
 	}
 }
@@ -104,8 +111,8 @@ func (e *Engine) Search(ctx context.Context, query string) (*SearchResponse, err
 		}
 	}
 
-	// Synthesize an AI Summary from gathered sources
-	aiSummary := synthesizeAISummary(cleanQuery, allResults)
+	// Synthesize an AI Summary from gathered sources via connected Agent-Go
+	aiSummary := e.synthesizeAISummary(ctx, cleanQuery, allResults)
 
 	resp := &SearchResponse{
 		Query:      cleanQuery,
@@ -127,7 +134,7 @@ func (e *Engine) searchDuckDuckGo(ctx context.Context, query string) ([]ResultIt
 	}
 	req.Header.Set("User-Agent", "AI-Go-Browser/2.0")
 
-	resp, err := e.client.Do(req)
+	resp, err := e.webClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -186,7 +193,7 @@ func (e *Engine) searchWikipedia(ctx context.Context, query string) ([]ResultIte
 	}
 	req.Header.Set("User-Agent", "AI-Go-Browser-Agent/2.0 (research@aigobrowser.org)")
 
-	resp, err := e.client.Do(req)
+	resp, err := e.webClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +235,7 @@ func (e *Engine) searchGoogle(ctx context.Context, query string) ([]ResultItem, 
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
 
-	resp, err := e.client.Do(req)
+	resp, err := e.webClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -275,21 +282,181 @@ func (e *Engine) searchGoogle(ctx context.Context, query string) ([]ResultItem, 
 	return items, nil
 }
 
-// synthesizeAISummary creates an intelligent executive overview of the search query and retrieved documents.
-func synthesizeAISummary(query string, results []ResultItem) string {
+// loadAgentGoEnv attempts to load KILO_API_KEY and LLM_API_KEY from known .env paths.
+func loadAgentGoEnv() (kiloKey, llmKey, llmBase, llmModel string) {
+	kiloKey = os.Getenv("KILO_API_KEY")
+	llmKey = os.Getenv("LLM_API_KEY")
+	llmBase = os.Getenv("LLM_BASE_URL")
+	llmModel = os.Getenv("LLM_MODEL")
+
+	if kiloKey != "" || llmKey != "" {
+		return
+	}
+
+	paths := []string{
+		`C:\Users\kbell\Downloads\agent-go\.env`,
+		"/home/ubuntu/ai-go-browser/.env",
+		"/home/ubuntu/agent-go/.env",
+		"agent-go.env",
+		".env",
+	}
+
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if strings.HasPrefix(line, "#") || !strings.Contains(line, "=") {
+				continue
+			}
+			parts := strings.SplitN(line, "=", 2)
+			k := strings.TrimSpace(parts[0])
+			v := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
+			switch k {
+			case "KILO_API_KEY":
+				if kiloKey == "" {
+					kiloKey = v
+				}
+			case "LLM_API_KEY":
+				if llmKey == "" {
+					llmKey = v
+				}
+			case "LLM_BASE_URL":
+				if llmBase == "" {
+					llmBase = v
+				}
+			case "LLM_MODEL":
+				if llmModel == "" {
+					llmModel = v
+				}
+			}
+		}
+	}
+	return
+}
+
+// synthesizeAISummary calls the Agent-Go LLM gateway to generate a human-grade executive summary.
+func (e *Engine) synthesizeAISummary(ctx context.Context, query string, results []ResultItem) string {
 	if len(results) == 0 {
 		return fmt.Sprintf("Não foram encontradas fontes suficientes na web para o termo '%s'. Tente formular a pergunta de outra forma.", query)
 	}
 
-	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("### 🤖 Resumo Inteligente da IA para: *\"%s\"*\n\n", query))
+	kiloKey, llmKey, llmBase, _ := loadAgentGoEnv()
+	log.Printf("[agent-go] checking LLM credentials: kilo=%t, llm=%t", kiloKey != "", llmKey != "")
 
-	// Highlight primary fact
+	// 1. Try Kilo Gateway from agent-go
+	if kiloKey != "" {
+		summary, err := e.callLLM(ctx, "https://api.kilo.ai/api/gateway/chat/completions", kiloKey, "kilo-auto/free", query, results)
+		if err == nil && summary != "" {
+			return summary
+		}
+		log.Printf("[agent-go] kilo gateway failed: %v", err)
+	}
+
+	// 2. Try NVIDIA NIM from agent-go
+	if llmKey != "" {
+		baseURL := llmBase
+		if baseURL == "" {
+			baseURL = "https://integrate.api.nvidia.com/v1"
+		}
+		if !strings.HasSuffix(baseURL, "/chat/completions") {
+			baseURL = strings.TrimRight(baseURL, "/") + "/chat/completions"
+		}
+		summary, err := e.callLLM(ctx, baseURL, llmKey, "deepseek-ai/deepseek-v4.1-flash", query, results)
+		if err == nil && summary != "" {
+			return summary
+		}
+		log.Printf("[agent-go] nvidia nim failed: %v", err)
+	}
+
+	// 3. Fallback to local extractive summary
+	log.Printf("[agent-go] using local fallback summary")
+	return synthesizeAISummaryLocal(query, results)
+}
+
+func (e *Engine) callLLM(ctx context.Context, endpoint, apiKey, model, query string, results []ResultItem) (string, error) {
+	var sources strings.Builder
+	for i, r := range results {
+		if i >= 6 {
+			break
+		}
+		sources.WriteString(fmt.Sprintf("[%d] Título: %s\nURL: %s\nConteúdo: %s\n\n", i+1, r.Title, r.URL, r.Snippet))
+	}
+
+	sysPrompt := "Você é o assistente inteligente de busca do AI Go Browser conectado ao Agent-Go.\n" +
+		"Sua missão é responder à pesquisa do usuário de forma clara, aprofundada, didática e precisa em português do Brasil.\n" +
+		"Use as informações encontradas na web para embasar sua resposta. Organize com subtítulos em Markdown e tópicos quando apropriado."
+
+	userPrompt := fmt.Sprintf("Pesquisa do usuário: %q\n\nFontes em tempo real coletadas pelo navegador em Go:\n%s\nPor favor, forneça uma síntese completa e estruturada respondendo diretamente à pesquisa.", query, sources.String())
+
+	payload := map[string]any{
+		"model": model,
+		"messages": []map[string]string{
+			{"role": "system", "content": sysPrompt},
+			{"role": "user", "content": userPrompt},
+		},
+		"temperature": 0.3,
+		"max_tokens":  1024,
+	}
+
+	jsonBytes, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewReader(jsonBytes))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	log.Printf("[agent-go] calling LLM %s via %s (timeout: 60s)...", model, endpoint)
+	resp, err := e.llmClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("llm status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var chatResp struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+		return "", err
+	}
+
+	if len(chatResp.Choices) > 0 && chatResp.Choices[0].Message.Content != "" {
+		res := strings.TrimSpace(chatResp.Choices[0].Message.Content)
+		res += "\n\n---\n💡 *Síntese gerada pelo Agente de IA em Go (Agent-Go) com fontes da web.*"
+		log.Printf("[agent-go] LLM response received successfully (%d bytes)", len(res))
+		return res, nil
+	}
+
+	return "", fmt.Errorf("empty completion from llm")
+}
+
+// synthesizeAISummaryLocal is the instant fallback extractor when LLM is unavailable.
+func synthesizeAISummaryLocal(query string, results []ResultItem) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("### 🤖 Resumo da IA para: *\"%s\"*\n\n", query))
+
 	top := results[0]
-	sb.WriteString(fmt.Sprintf("**Principal conclusão:** %s\n\n", top.Snippet))
+	sb.WriteString(fmt.Sprintf("**Destaque:** %s\n\n", top.Snippet))
 
 	if len(results) > 1 {
-		sb.WriteString("#### 📌 Pontos Principais Encontrados:\n")
+		sb.WriteString("#### 📌 Principais Tópicos:\n")
 		count := 0
 		for _, r := range results {
 			if r.Snippet != "" && r.Snippet != top.Snippet {
@@ -303,6 +470,6 @@ func synthesizeAISummary(query string, results []ResultItem) string {
 		sb.WriteString("\n")
 	}
 
-	sb.WriteString(fmt.Sprintf("💡 *Pesquisa processada em tempo real pelo motor ultraleve AI Go Browser (~12MB RAM).*"))
+	sb.WriteString("💡 *Pesquisa processada em tempo real pelo motor ultraleve AI Go Browser (~12MB RAM).*")
 	return sb.String()
 }
