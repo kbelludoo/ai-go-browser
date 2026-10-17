@@ -2,15 +2,18 @@ package mcp
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"ai-go-browser/browser"
 	"ai-go-browser/pkg/resolver"
+	"ai-go-browser/pkg/search"
 )
 
 // JSONRPCRequest represents an incoming JSON-RPC 2.0 request.
@@ -51,7 +54,7 @@ type Server struct {
 
 // NewServer creates a new MCP server wrapping the AI Go Browser engine.
 func NewServer() *Server {
-	b := browser.New([]string{}, true)
+	b := browser.New([]string{"*"}, true)
 	return &Server{
 		browser:  b,
 		resolver: resolver.NewSelfHealingResolver(),
@@ -133,6 +136,20 @@ func (s *Server) Tools() []ToolDefinition {
 			Description: "Get the current page URL, title, HTTP status, and live RAM memory consumption (RSS in MiB).",
 			InputSchema: map[string]any{
 				"type": "object",
+			},
+		},
+		{
+			Name:        "browser_search",
+			Description: "Search the web in real-time across Google, DuckDuckGo and Wikipedia with live web crawling and AI synthesis.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"query": map[string]any{
+						"type":        "string",
+						"description": "The search query or question to investigate.",
+					},
+				},
+				"required": []string{"query"},
 			},
 		},
 	}
@@ -349,6 +366,31 @@ func (s *Server) callTool(name string, argsRaw json.RawMessage) (string, error) 
 		}
 		mem := browser.ReadProcessMemory(os.Getpid())
 		return fmt.Sprintf("Current URL: %s\nTitle: %q\nStatus: %d\nMemory RSS: %.2f MiB", p.URL, p.Title, p.Status, mem.RSSMiB), nil
+
+	case "browser_search":
+		var args struct {
+			Query string `json:"query"`
+		}
+		if err := json.Unmarshal(argsRaw, &args); err != nil {
+			return "", err
+		}
+		if args.Query == "" {
+			return "", fmt.Errorf("param 'query' is required")
+		}
+		eng := search.NewEngine()
+		ctx, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+		defer cancel()
+		resp, err := eng.Search(ctx, args.Query)
+		if err != nil {
+			return "", err
+		}
+		var sb strings.Builder
+		sb.WriteString(resp.AISummary)
+		sb.WriteString("\n\n### Fontes Encontradas:\n")
+		for i, r := range resp.Results {
+			sb.WriteString(fmt.Sprintf("%d. [%s](%s): %s\n", i+1, r.Title, r.URL, r.Snippet))
+		}
+		return sb.String(), nil
 
 	default:
 		return "", fmt.Errorf("unknown tool: %s", name)
