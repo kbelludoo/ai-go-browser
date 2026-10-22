@@ -38,3 +38,9 @@ Thumbs.db
 
 # Temporary logs
 *.log
+
+.ai-browser-memory/
+*.db
+*.db-wal
+*.db-shm
+

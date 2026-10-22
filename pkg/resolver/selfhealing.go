@@ -9,6 +9,8 @@ import (
 
 // MatchTarget defines criteria for locating an element during self-healing.
 type MatchTarget struct {
+	Domain      string `json:"domain,omitempty"`
+	Action      string `json:"action,omitempty"`
 	Ref         string `json:"ref,omitempty"`
 	Text        string `json:"text,omitempty"`
 	Tag         string `json:"tag,omitempty"`
@@ -16,6 +18,12 @@ type MatchTarget struct {
 	AriaLabel   string `json:"aria_label,omitempty"`
 	Placeholder string `json:"placeholder,omitempty"`
 	Name        string `json:"name,omitempty"`
+}
+
+// MemoryReader allows self-healing resolver to query and update learned browser memory.
+type MemoryReader interface {
+	GetLearnedSelector(domain, action string) (string, bool)
+	RecordFeedback(domain, action, selector string, success bool)
 }
 
 // HealedMatch represents the result of a self-healing resolution.
@@ -28,7 +36,8 @@ type HealedMatch struct {
 
 // SelfHealingResolver performs resilient element resolution against dynamic DOM shifts.
 type SelfHealingResolver struct {
-	Threshold float64 // Minimum confidence to accept a match (default: 0.65)
+	Threshold float64      // Minimum confidence to accept a match (default: 0.65)
+	Memory    MemoryReader // Optional memory engine for O(1) learned resolution
 }
 
 // NewSelfHealingResolver creates a resolver with recommended defaults.
@@ -38,10 +47,45 @@ func NewSelfHealingResolver() *SelfHealingResolver {
 	}
 }
 
+// WithMemory attaches a browser memory engine to enable learned resolution.
+func (r *SelfHealingResolver) WithMemory(m MemoryReader) *SelfHealingResolver {
+	r.Memory = m
+	return r
+}
+
 // Resolve attempts exact matching first, falling back to heuristic and fuzzy matching.
 func (r *SelfHealingResolver) Resolve(elements []browser.Element, target MatchTarget) *HealedMatch {
 	if len(elements) == 0 {
 		return nil
+	}
+
+	recordSuccess := func(m *HealedMatch) *HealedMatch {
+		if m != nil && r.Memory != nil && target.Domain != "" && target.Action != "" {
+			sel := m.Element.Ref
+			if m.Element.ID != "" {
+				sel = m.Element.ID
+			} else if m.Element.Name != "" {
+				sel = m.Element.Name
+			}
+			r.Memory.RecordFeedback(target.Domain, target.Action, sel, true)
+		}
+		return m
+	}
+
+	// 0. Learned Memory Fast-Path: Check if we already know the successful selector for this domain+action
+	if r.Memory != nil && target.Domain != "" && target.Action != "" {
+		if learnedSel, ok := r.Memory.GetLearnedSelector(target.Domain, target.Action); ok && learnedSel != "" {
+			for _, el := range elements {
+				if el.Ref == learnedSel || el.ID == learnedSel || el.Name == learnedSel || strings.Contains(learnedSel, el.Name) || (el.ID != "" && strings.Contains(learnedSel, el.ID)) {
+					return &HealedMatch{
+						Element:    el,
+						Confidence: 0.99,
+						Reason:     "learned_memory_fastpath",
+						Healed:     false,
+					}
+				}
+			}
+		}
 	}
 
 	// 1. Direct Reference ID match (e.g., "#ref:3" or "3")
@@ -49,12 +93,12 @@ func (r *SelfHealingResolver) Resolve(elements []browser.Element, target MatchTa
 	for _, el := range elements {
 		elRef := strings.TrimPrefix(el.Ref, "#ref:")
 		if elRef != "" && elRef == cleanedRef {
-			return &HealedMatch{
+			return recordSuccess(&HealedMatch{
 				Element:    el,
 				Confidence: 1.0,
 				Reason:     "exact_ref_match",
 				Healed:     false,
-			}
+			})
 		}
 	}
 
@@ -72,28 +116,28 @@ func (r *SelfHealingResolver) Resolve(elements []browser.Element, target MatchTa
 		elName := strings.ToLower(strings.TrimSpace(el.Name))
 
 		if targetText != "" && elText == targetText {
-			return &HealedMatch{
+			return recordSuccess(&HealedMatch{
 				Element:    el,
 				Confidence: 0.95,
 				Reason:     "exact_text_match",
 				Healed:     true,
-			}
+			})
 		}
 		if targetLabel != "" && elLabel == targetLabel {
-			return &HealedMatch{
+			return recordSuccess(&HealedMatch{
 				Element:    el,
 				Confidence: 0.95,
 				Reason:     "exact_label_match",
 				Healed:     true,
-			}
+			})
 		}
 		if targetName != "" && elName == targetName {
-			return &HealedMatch{
+			return recordSuccess(&HealedMatch{
 				Element:    el,
 				Confidence: 0.90,
 				Reason:     "exact_name_match",
 				Healed:     true,
-			}
+			})
 		}
 	}
 
@@ -107,20 +151,20 @@ func (r *SelfHealingResolver) Resolve(elements []browser.Element, target MatchTa
 			if target.Tag != "" && strings.EqualFold(el.Tag, target.Tag) {
 				score += 0.05
 			}
-			return &HealedMatch{
+			return recordSuccess(&HealedMatch{
 				Element:    el,
 				Confidence: score,
 				Reason:     "substring_text_match",
 				Healed:     true,
-			}
+			})
 		}
 		if targetLabel != "" && elLabel != "" && len(targetLabel) >= 3 && strings.Contains(elLabel, targetLabel) {
-			return &HealedMatch{
+			return recordSuccess(&HealedMatch{
 				Element:    el,
 				Confidence: 0.80,
 				Reason:     "substring_label_match",
 				Healed:     true,
-			}
+			})
 		}
 	}
 
@@ -159,12 +203,12 @@ func (r *SelfHealingResolver) Resolve(elements []browser.Element, target MatchTa
 	}
 
 	if bestScore >= r.Threshold {
-		return &HealedMatch{
+		return recordSuccess(&HealedMatch{
 			Element:    bestEl,
 			Confidence: bestScore,
 			Reason:     bestReason,
 			Healed:     true,
-		}
+		})
 	}
 
 	return nil

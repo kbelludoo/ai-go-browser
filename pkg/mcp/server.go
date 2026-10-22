@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"ai-go-browser/browser"
+	"ai-go-browser/pkg/memory"
 	"ai-go-browser/pkg/resolver"
 	"ai-go-browser/pkg/search"
 )
@@ -50,14 +51,21 @@ type Server struct {
 	mu       sync.Mutex
 	browser  *browser.Browser
 	resolver *resolver.SelfHealingResolver
+	memory   *memory.Engine
 }
 
 // NewServer creates a new MCP server wrapping the AI Go Browser engine.
 func NewServer() *Server {
 	b := browser.New([]string{"*"}, true)
+	r := resolver.NewSelfHealingResolver()
+	mem, err := memory.NewEngine("")
+	if err == nil && mem != nil {
+		r.WithMemory(mem)
+	}
 	return &Server{
 		browser:  b,
-		resolver: resolver.NewSelfHealingResolver(),
+		resolver: r,
+		memory:   mem,
 	}
 }
 
@@ -150,6 +158,79 @@ func (s *Server) Tools() []ToolDefinition {
 					},
 				},
 				"required": []string{"query"},
+			},
+		},
+		{
+			Name:        "browser_memory_search",
+			Description: "Search through previously visited web pages using high-speed SQLite FTS5 full-text search with BM25 ranking (instant zero-network retrieval).",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"query": map[string]any{
+						"type":        "string",
+						"description": "Keywords to find in previously browsed web documents.",
+					},
+					"limit": map[string]any{
+						"type":        "integer",
+						"description": "Maximum number of results to return (default 5).",
+					},
+				},
+				"required": []string{"query"},
+			},
+		},
+		{
+			Name:        "browser_memory_learn",
+			Description: "Teach the browser memory a successful selector, fast-path direct URL, or cookie banner dismiss modal for a domain.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"domain": map[string]any{
+						"type":        "string",
+						"description": "Target domain (e.g. 'github.com', 'google.com').",
+					},
+					"type": map[string]any{
+						"type":        "string",
+						"enum":        []string{"selector", "fastpath", "dismiss_modal"},
+						"description": "Type of knowledge to record.",
+					},
+					"key": map[string]any{
+						"type":        "string",
+						"description": "Action name (e.g. 'search_input', 'search') or empty if dismiss_modal.",
+					},
+					"value": map[string]any{
+						"type":        "string",
+						"description": "The CSS/Ref selector or fastpath URL template (e.g. 'https://domain.com/q={query}').",
+					},
+				},
+				"required": []string{"domain", "type", "value"},
+			},
+		},
+		{
+			Name:        "browser_memory_handoff_export",
+			Description: "Export the current browser navigation state, active URL, and goal into a portable handoff packet for another agent (Antigravity <-> Agent-Go).",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"goal": map[string]any{
+						"type":        "string",
+						"description": "The active user goal or task in progress.",
+					},
+				},
+				"required": []string{"goal"},
+			},
+		},
+		{
+			Name:        "browser_memory_handoff_resume",
+			Description: "Resume a previous browser navigation session from a handoff packet ID.",
+			InputSchema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"handoff_id": map[string]any{
+						"type":        "string",
+						"description": "The handoff packet ID (e.g. 'b-handoff-a1b2c3d4').",
+					},
+				},
+				"required": []string{"handoff_id"},
 			},
 		},
 	}
@@ -256,6 +337,9 @@ func (s *Server) callTool(name string, argsRaw json.RawMessage) (string, error) 
 		title := ""
 		if res.Page != nil {
 			title = res.Page.Title
+			if s.memory != nil {
+				_ = s.memory.RecordVisit(args.URL, title, res.Page.Markdown, res.Page.Status)
+			}
 		}
 		return fmt.Sprintf("Navigated to %s (Title: %q, Status: %d, RSS: %.2f MiB)", args.URL, title, res.Page.Status, res.Memory.RSSMiB), nil
 
@@ -391,6 +475,118 @@ func (s *Server) callTool(name string, argsRaw json.RawMessage) (string, error) 
 			sb.WriteString(fmt.Sprintf("%d. [%s](%s): %s\n", i+1, r.Title, r.URL, r.Snippet))
 		}
 		return sb.String(), nil
+
+	case "browser_memory_search":
+		if s.memory == nil {
+			return "Browser memory engine is not initialized", nil
+		}
+		var args struct {
+			Query string `json:"query"`
+			Limit int    `json:"limit"`
+		}
+		if err := json.Unmarshal(argsRaw, &args); err != nil {
+			return "", err
+		}
+		if args.Query == "" {
+			return "", fmt.Errorf("param 'query' is required")
+		}
+		results, err := s.memory.SearchVisitedPages(args.Query, args.Limit)
+		if err != nil {
+			return "", fmt.Errorf("memory search failed: %w", err)
+		}
+		if len(results) == 0 {
+			return fmt.Sprintf("No memory matches found for %q", args.Query), nil
+		}
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("### 🧠 Browser Memory Search Hits for %q:\n", args.Query))
+		for i, r := range results {
+			sb.WriteString(fmt.Sprintf("%d. **[%s](%s)** (Domain: %s)\n   Snippet: %s\n", i+1, r.Title, r.URL, r.Domain, r.Snippet))
+		}
+		return sb.String(), nil
+
+	case "browser_memory_learn":
+		if s.memory == nil {
+			return "Browser memory engine is not initialized", nil
+		}
+		var args struct {
+			Domain string `json:"domain"`
+			Type   string `json:"type"`
+			Key    string `json:"key"`
+			Value  string `json:"value"`
+		}
+		if err := json.Unmarshal(argsRaw, &args); err != nil {
+			return "", err
+		}
+		if args.Domain == "" || args.Value == "" {
+			return "", fmt.Errorf("params 'domain' and 'value' are required")
+		}
+		switch args.Type {
+		case "selector":
+			s.memory.RecordFeedback(args.Domain, args.Key, args.Value, true)
+			return fmt.Sprintf("Learned selector %q -> %q for domain %s", args.Key, args.Value, args.Domain), nil
+		case "fastpath":
+			pb := s.memory.GetOrCreatePlaybook(args.Domain)
+			if pb.FastPaths == nil {
+				pb.FastPaths = make(map[string]string)
+			}
+			pb.FastPaths[args.Key] = args.Value
+			return fmt.Sprintf("Learned fastpath route %q -> %q for domain %s", args.Key, args.Value, args.Domain), nil
+		case "dismiss_modal":
+			s.memory.RegisterDismissModal(args.Domain, args.Value)
+			return fmt.Sprintf("Registered dismiss modal %q for domain %s", args.Value, args.Domain), nil
+		default:
+			return "", fmt.Errorf("unknown memory learn type: %s (expected selector, fastpath, or dismiss_modal)", args.Type)
+		}
+
+	case "browser_memory_handoff_export":
+		if s.memory == nil {
+			return "Browser memory engine is not initialized", nil
+		}
+		var args struct {
+			Goal string `json:"goal"`
+		}
+		if err := json.Unmarshal(argsRaw, &args); err != nil {
+			return "", err
+		}
+		p := s.browser.Current
+		url := ""
+		title := ""
+		if p != nil {
+			url = p.URL
+			title = p.Title
+		}
+		steps := []string{"browser_active"}
+		handoff, err := s.memory.ExportHandoff(url, title, args.Goal, steps, nil)
+		if err != nil {
+			return "", fmt.Errorf("failed to export handoff: %w", err)
+		}
+		return fmt.Sprintf("Created Navigation Handoff Packet:\nID: %s\nURL: %s\nGoal: %s\nSaved: %s", handoff.ID, handoff.URL, handoff.Goal, handoff.SavedAt.Format(time.RFC3339)), nil
+
+	case "browser_memory_handoff_resume":
+		if s.memory == nil {
+			return "Browser memory engine is not initialized", nil
+		}
+		var args struct {
+			HandoffID string `json:"handoff_id"`
+		}
+		if err := json.Unmarshal(argsRaw, &args); err != nil {
+			return "", err
+		}
+		h, err := s.memory.ResumeHandoff(args.HandoffID)
+		if err != nil {
+			return "", fmt.Errorf("failed to resume handoff: %w", err)
+		}
+		if h == nil {
+			return fmt.Sprintf("Handoff packet %q not found", args.HandoffID), nil
+		}
+		// If handoff has an URL, navigate to it
+		if h.URL != "" {
+			res := s.browser.Execute(browser.Command{Cmd: "open", URL: h.URL})
+			if !res.OK {
+				return "", fmt.Errorf("resumed handoff navigation failed: %s", res.Error)
+			}
+		}
+		return fmt.Sprintf("Successfully resumed navigation from Handoff %s\nURL: %s\nGoal: %s", h.ID, h.URL, h.Goal), nil
 
 	default:
 		return "", fmt.Errorf("unknown tool: %s", name)
