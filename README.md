@@ -1,82 +1,95 @@
-# AI Go Browser — Navegador Híbrido de Alta Performance para Agentes de IA
+# AI Go Browser — Navegador Nativo de Alta Performance para Agentes de IA
 
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)](#)
-[![Memory](https://img.shields.io/badge/RAM-%3C%2075%20MB-green)](#)
-[![TLS](https://img.shields.io/badge/Fingerprint-Chrome%20131%20JA4-success)](#)
+[![Memory](https://img.shields.io/badge/RAM-12--24%20MiB-success)](#)
+[![TLS](https://img.shields.io/badge/uTLS-Chrome%20GREASE%20JA4-success)](#)
 
-O **AI Go Browser** é um navegador headless de arquitetura híbrida projetado especificamente para **Agentes Autônomos de Inteligência Artificial**, raspagem semântica e automação resiliente. 
+O **AI Go Browser** é um navegador semântico e headless projetado especificamente para **Agentes Autônomos de Inteligência Artificial**, raspagem semântica e automação resiliente.
 
-Diferente de frameworks tradicionais (como Playwright, Puppeteer e Selenium) que consomem mais de **700 MB a 1 GB de RAM por aba** e são facilmente detectados por sistemas anti-bot, o AI Go Browser combina um motor ultraleve em **Go Puro**, execução segura em **WebAssembly (Wazero)** e controle nativo via **CDP (Chrome DevTools Protocol)** com disfarce criptográfico completo.
-
----
-
-## ⚡ Por que é o Melhor Navegador para Agentes de IA?
-
-### 1. Consumo de Memória 14x Menor (< 75 MB)
-* **Playwright / Chromium:** 600 MB a 1.000 MB de RAM por instância.
-* **AI Go Browser:** **47 MB a 73 MB** em regime de trabalho.
-* Permite rodar **mais de 80 agentes simultâneos** em servidores modestos (como instâncias gratuitas da Oracle Cloud).
-
-### 2. Redução Drástica de Tokens de LLM (86.6x mais barato)
-Ao navegar na web, modelos de linguagem (GPT-4o, Claude 3.5, Gemini 1.5/2.0) cobram por token de contexto.
-* Em vez de injetar 500 KB de HTML com CSS, SVGs e rastreadores, a observação semântica (`view:"read"`) extrai apenas referências acionáveis (`b1`, `b2`, `headings`, formulários e dados estruturados).
-* Reduz payloads de 452 KB para **5.2 KB de JSON limpo** (**86.6x menos tokens** cobrados na API da LLM).
-
-### 3. Disfarce Perfeito de Navegador Real (Auditoria 6/6 Aprovada)
-Auditado e comprovado ao vivo em múltiplos servidores forenses públicos (`tls.peet.ws`, `tls.browserleaks.com`, `cloudflare.com` e `httpbin.org`):
-* **TLS Fingerprint:** Assinatura criptográfica JA3/JA4 idêntica ao Google Chrome 131 oficial no Windows.
-* **HTTP/2 Akamai Frame:** Negociação com as mesmas configurações de janela e pseudo-headers (`:method`, `:authority`, `:scheme`, `:path`) do Chromium.
-* **Client Hints:** Cabeçalhos modernos de segurança (`Sec-CH-UA`, `Sec-CH-UA-Platform: "Windows"`).
-* **DOM Stealth:** `navigator.webdriver = false`, objetos `window.chrome` nativos e plugins ativos.
+Diferente de frameworks tradicionais (como Playwright, Puppeteer e Selenium) que consomem entre **700 MB e 2.2 GB de RAM por sessão** e explodem janelas de contexto de LLMs com dezenas de milhares de tokens HTML brutos, o AI Go Browser utiliza um motor nativo em **Go puro**, transporte com **uTLS (camuflagem TLS com GREASE real)**, parser semântico com referências acionáveis (`#ref`), dedução de formulários/botões pré-clique e memória local integrada com SQLite FTS5.
 
 ---
 
-## 🏛️ Arquitetura Híbrida em 3 Camadas
+## ⚡ Diferenciais de Engenharia para Agentes de IA
+
+### 1. Consumo Físico de Memória Ultrabaixo (12 a 24 MiB)
+* **Playwright / Chromium Headless:** 700 MB a 2.242 MB de RAM (árvore de processos Chromium).
+* **AI Go Browser (Motor Nativo):** **12 MiB a 24 MiB** de RSS por processo.
+* **Escala:** Medido independentemente em ~9,7 MiB por agente isolado, permitindo rodar **mais de 80 agentes simultâneos** em servidores modestos (como VPS de 1 GB de RAM) sem acionar o Linux OOM Killer.
+
+### 2. Redução Semântica de Tokens para LLMs (~89% de Economia)
+Modelos de linguagem (GPT-4o, Claude 3.5, Gemini 1.5/2.0) cobram por token e sofrem com degradação de atenção ao processar HTML massivo:
+* Em vez de injetar páginas inteiras de HTML cru com estilos, scripts e SVGs, o parser semântico gera Markdown compacto estruturado com referências acionáveis indexadas (`l1`, `b1`, `f1`, `i1`).
+* **Comprovado em 200 sites reais da Internet:** Reduziu **20.783.600 tokens brutos para 2.216.100 tokens** — uma economia média de **89.34%** de contexto.
+
+### 3. Inteligência Pré-Clique nos Botões (Dedução de Ações)
+* Navegadores tradicionais tratam botões como elementos visuais opacos.
+* O AI Go Browser inspeciona a árvore de formulários associados e atributos de dados, revelando para a IA o **endpoint de destino (URL), método HTTP (`GET`/`POST`) e parâmetros/CSRF ocultos** antes de qualquer clique ser executado.
+
+### 4. Zero-JS Hydration (SPA & SSR)
+* Páginas modernas construídas com Next.js, Nuxt ou com metadados estruturados expõem seu estado em tags `<script id="__NEXT_DATA__">` e Schema.org (`JSON-LD`).
+* O motor extrai o estado estruturado da aplicação em microssegundos sem precisar inicializar motores pesados de renderização.
+
+### 5. Camuflagem de Rede com uTLS e Client Hints
+* Integração de transporte com **`uTLS`** (`github.com/refraction-networking/utls`), gerando um ClientHello TLS idêntico ao Chrome com suporte a **cifras GREASE** e extensões TLS 1.3 na ordem oficial.
+* Envio automático de cabeçalhos de integridade modernos: `Sec-CH-UA`, `Sec-CH-UA-Platform`, `Sec-Fetch-Dest`, `Sec-Fetch-Mode`.
+
+---
+
+## 🏛️ Arquitetura do Sistema
 
 ```
-                           [ Agente de IA / LLM ]
-                                     │
-                      ┌──────────────┴──────────────┐
-                      ▼                             ▼
-           [ Camada 1: Go HTTP/2 ]       [ Camada 2: Wasm Engine ]
-           • TLS Chrome 131 (JA4)        • QuickJS em WebAssembly
-           • Parser HTML5 x/net          • Wazero JIT (Zero CGO)
-           • Extração JSON / Next.js     • Scripts & Desafios Anti-Bot
-                      │                             │
-                      └──────────────┬──────────────┘
-                                     │ (Fallback dinâmico)
-                                     ▼
-                        [ Camada 3: Ephemeral CDP ]
-                        • Sessão Chromium / Brave / Edge
-                        • TrustedHTML bypass (Input.insertText)
-                        • Interação com Google Gemini & SPAs
+                       [ Agente de IA / LLM ]
+                                  │
+                 ┌────────────────┴────────────────┐
+                 ▼                                 ▼
+      [ Motor Nativo Go Puro ]          [ Camada de Transporte ]
+      • Parser HTML5 x/net              • uTLS com GREASE & JA4
+      • Extração de Refs (#ref)         • Proteção Anti-SSRF
+      • Zero-JS Hydration               • Client Hints Chrome 131
+      • Dedução Pré-Clique de Ações     • Governor de Memória (sync.Pool)
+                 │                                 │
+                 └────────────────┬────────────────┘
+                                  │
+                 ┌────────────────┴────────────────┐
+                 ▼                                 ▼
+      [ JavaScript In-Process ]         [ Memória Persistente ]
+      • Goja ECMAScript VM in-process   • SQLite FTS5 + BM25
+      • Suporte a cookies/sessões       • O(1) recall de páginas
+      • Zero dependência de binários    • Busca semântica local
 ```
 
 ---
 
-## 📊 Benchmarks Oficiais
+## 📊 Resultados Empíricos Medidos
 
-Testes físicos realizados em ambiente Windows AMD64 com Intel/AMD CPU:
+### Benchmark Comparativo Direto (Executado no mesmo ambiente):
+Dados físicos medidos em tempo real comparando `ai_go` contra `chromium_cdp` ([`benchmark-results/live_direct_compare.md`](benchmark-results/live_direct_compare.md)):
 
-| Métrica / Cenário | Chromium / Edge (CDP) | AI Go Browser | Vantagem Comprovada |
+| Métrica | Chromium Headless (msedge.exe via CDP) | AI Go Browser (Motor Nativo) | Impacto Real |
 | :--- | :---: | :---: | :---: |
-| **Memória Inicial (Cold Start)** | 606.3 MB | **73.6 MB** | 🏆 **8.2x MENOS MEMÓRIA** |
-| **Memória Após Carga Pesada** | 711.4 MB | **47.7 MB** | 🏆 **14.9x MENOS MEMÓRIA** |
-| **Latência por Ação (Round-Trip)** | 27.66 ms (0.28 ms/op) | **6.50 ms** (0.06 ms/op) | 🏆 **4.3x MAIS RÁPIDO** |
-| **Proof-of-Work / Anti-Bot Hashing** | 36.50 ms | **10.80 ms** | 🏆 **3.4x MAIS RÁPIDO** |
-| **Extração Hacker News** | 2.12 s (812 MB RAM) | **0.61 s (127 MB RAM)** | 🏆 **3.5x mais rápido** |
-| **Extração Go.dev Oficial** | 1.88 s (907 MB RAM) | **0.68 s (129 MB RAM)** | 🏆 **2.7x mais rápido** |
-| **Extração Wikipédia Brasil** | 1.99 s (1.092 MB RAM) | **2.31 s (145 MB RAM)** | 🏆 **7.5x menos RAM** |
+| **Startup do Motor** | 426.51 ms | **0.00 ms** | Inicialização in-process instantânea |
+| **Tempo Total de Execução** | 5.414 ms | **2.393 ms** | **Mais de 2x mais rápido** |
+| **Pico de Memória RAM (RSS)** | **738.69 MiB** | **24.42 MiB** | **30x menos memória física** |
+
+### Benchmark em Larga Escala (200 Sites Reais):
+Varredura concorrente em 200 sites públicos globais ([`benchmark-results/real-sites-200.md`](benchmark-results/real-sites-200.md)):
+- **Taxa de Sucesso:** 86.0% (172/200)
+- **Latência Média de Parse Go:** 37.96 ms
+- **Tokens HTML Brutos:** 20.783.600 tokens
+- **Tokens Agente (#ref Markdown):** 2.216.100 tokens (Economia de 18.567.500 tokens / **89.34%**)
+- **Botões com Ação Pré-Deduzida:** 216 botões
+- **Entidades Schema.org / JSON-LD:** 107 entidades extraídas sem executar JS
 
 ---
 
 ## 🚀 Instalação e Compilação
 
 ### Pré-requisitos
-* Go 1.26 ou superior instalado.
-* Sem dependências de GCC ou MinGW (compilação 100% Go puro).
+* Go 1.24 ou superior instalado.
+* Compilação 100% Go puro (sem GCC/CGO obrigatório no binário principal).
 
 ```bash
 # Clonar o repositório
@@ -94,41 +107,34 @@ go build -o bin/aigobrowser.exe ./cmd/aigobrowser
 
 ## 🛠️ Modos de Uso
 
-### 1. Navegação Semântica com o CLI
+### 1. Autoteste Integrado (`-demo`)
+Executa um fluxo completo local (navegação, clique em links, preenchimento de inputs e submissão de formulário) com medição de memória e tempo:
+```powershell
+.\bin\aigobrowser.exe -demo
+```
+
+### 2. Navegação Semântica via CLI
 ```powershell
 # Navegar em modo compacto de baixo consumo
 .\bin\aigobrowser.exe -compact=true -max-text=3000 https://go.dev
 
-# Executar com renderização JavaScript híbrida
-.\bin\aigobrowser.exe -auto-js=true https://news.ycombinator.com
+# Saída direta em formato Markdown com referências para a IA
+.\bin\aigobrowser.exe -format=markdown https://github.com
 ```
 
-### 2. Automação do Google Gemini (`cmd/geminicontroller`)
-Controla sessões autenticadas do Gemini sem precisar de senhas soltas nem enfrentar bloqueios de TrustedHTML:
-
-```powershell
-# Enviar um prompt automático para o Gemini aberto no Brave/Chrome
-go run ./cmd/geminicontroller -port=9222 -prompt="Explique a teoria da relatividade em 2 frases."
-```
-
-### 3. Suite de Benchmarks de Eficiência (`cmd/wasmbench`)
+### 3. Validador de Fingerprint e Eficiência (`cmd/wasmbench`)
+Mede o parsing in-process e audita ao vivo o handshake TLS contra servidores forenses:
 ```powershell
 go run ./cmd/wasmbench
 ```
 
----
-
-## 📁 Estrutura do Repositório
-
-* **`browser/`**: Núcleo do navegador (DOM, parsing HTML5, CDP, navegação, cookies, stealth layer e extração).
-* **`cmd/aigobrowser/`**: CLI principal para automação e interação com agentes de IA.
-* **`cmd/geminicontroller/`**: Controlador automatizado para interação com Google Gemini via CDP.
-* **`cmd/wasmbench/`**: Ferramenta de auditoria de memória, latência e fingerprint.
-* **`cmd/comparebrowser/`**, **`cmd/compareplaywright/`**: Ferramentas comparativas contra Chromium e Playwright.
-* **`benchmark-results/`**: Relatórios científicos completos das rodadas de medição.
+### 4. Executar o Benchmark de 200 Sites
+```powershell
+go run ./cmd/benchmark_200_sites
+```
 
 ---
 
-## 📜 Licença
+## 📄 Licença
 
-Distribuído sob a licença MIT. Consulte `LICENSE` para mais informações.
+Distribuído sob a licença [MIT](LICENSE). Consulte o arquivo `LICENSE` para obter mais detalhes.

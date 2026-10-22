@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	utls "github.com/refraction-networking/utls"
 )
 
 var (
@@ -105,9 +107,31 @@ func NewSafeTransport(blockPrivateNetworks bool) *http.Transport {
 		return customDialer.DialContext(ctx, network, addr)
 	}
 
+	safeDialTLSContext := func(ctx context.Context, network, addr string) (net.Conn, error) {
+		host, _, err := net.SplitHostPort(addr)
+		if err != nil {
+			return nil, err
+		}
+		rawConn, err := safeDialContext(ctx, network, addr)
+		if err != nil {
+			return nil, err
+		}
+
+		uConfig := &utls.Config{
+			ServerName: host,
+		}
+		uConn := utls.UClient(rawConn, uConfig, utls.HelloChrome_120)
+		if err := uConn.HandshakeContext(ctx); err != nil {
+			_ = rawConn.Close()
+			return nil, err
+		}
+		return uConn, nil
+	}
+
 	return &http.Transport{
 		Proxy:                 http.ProxyFromEnvironment,
 		DialContext:           safeDialContext,
+		DialTLSContext:        safeDialTLSContext,
 		ForceAttemptHTTP2:     true,
 		MaxIdleConns:          50,
 		IdleConnTimeout:       90 * time.Second,
