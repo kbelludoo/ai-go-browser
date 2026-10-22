@@ -443,3 +443,37 @@ func TestLiveDisabledFieldsetAndLegend(t *testing.T) {
 		t.Fatalf("disabled live query = %+v, %v", matches, err)
 	}
 }
+
+func TestLiveOpenRestartsFailedConnection(t *testing.T) {
+	// One transport failure must cost one navigation, not every later command:
+	// a session whose connection died can never serve another command.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, "<title>%s</title><p>Ready</p>", r.URL.Path)
+	}))
+	defer srv.Close()
+	b := newLiveTestBrowser(t)
+	if err := b.openLive(srv.URL+"/first", true); err != nil {
+		t.Fatal(err)
+	}
+	session := b.live
+	b.live.session.pageCDP.close()
+	deadline := time.Now().Add(5 * time.Second)
+	for !session.ended() {
+		if time.Now().After(deadline) {
+			t.Fatal("session did not observe the closed connection")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := b.openLive(srv.URL+"/recovered", true); err != nil {
+		t.Fatalf("open after connection failure: %v", err)
+	}
+	if b.Current.Title != "/recovered" {
+		t.Fatalf("title = %q, want /recovered", b.Current.Title)
+	}
+	if b.live == session {
+		t.Fatal("failed session was reused instead of replaced")
+	}
+	if b.RenderProcessID() <= 0 {
+		t.Fatal("restarted session has no renderer")
+	}
+}

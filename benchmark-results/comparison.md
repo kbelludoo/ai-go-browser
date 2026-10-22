@@ -1,17 +1,17 @@
 # Browser task comparison
 
-Generated: 2026-10-11T16:55:29Z. Mode: local fixtures. Fixture version: local-v1.
+Generated: 2026-10-16T03:20:14Z. Mode: explicit public URLs (read-only smoke checks). Fixture version: local-v1.
 
 Chromium: `C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`
 
 Baseline navigation: NavigateReady: loader-matched lifecycle load event, without a fixed settling delay.
 
-Environment: windows/amd64, go1.27.0, 28 logical CPUs. 3 repetitions per engine.
+Environment: windows/amd64, go1.27.0, 28 logical CPUs. 1 repetitions per engine.
 
 | Engine | Task assertions passed | Mean corpus time including startup (ms) | Mean startup (ms) | Median compact JSON bytes | Max sampled Go heap (MiB) | Max sampled harness RSS (MiB) | Max sampled Chromium tree RSS (MiB) |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| ai_go | 21/21 | 1962.30 | 0.00 | 311 | 16.13 | 37.79 | 792.36 |
-| chromium_cdp | 21/21 | 2065.50 | 558.74 | 244 | 5.23 | 26.39 | 813.75 |
+| ai_go | 4/4 | 2096.89 | 0.00 | 22496 | 4.15 | 21.46 | unavailable |
+| chromium_cdp | 4/4 | 5871.81 | 372.64 | 19408 | 1.76 | 17.24 | 748.35 |
 
 ## Individual tasks
 
@@ -19,48 +19,14 @@ Cold rows include startup in total time. Warm rows reuse the engine; AI Go may l
 
 | Engine | Run | Case | Phase | Success | Task ms | Startup ms | Total ms | Compact JSON bytes | Document bytes |
 |---|---:|---|---|---|---:|---:|---:|---:|---:|
-| ai_go | 1 | static | cold | true | 2.71 | 0.00 | 2.71 | 389 | 207 |
-| ai_go | 1 | large_html | warm | true | 20.45 | 0.00 | 20.45 | 288 | 2097349 |
-| ai_go | 1 | unicode | warm | true | 1.39 | 0.00 | 1.39 | 313 | 140 |
-| ai_go | 1 | get_form | warm | true | 0.00 | 0.00 | 0.00 | 311 | 130 |
-| ai_go | 1 | link_cookie | warm | true | 0.99 | 0.00 | 0.99 | 293 | 130 |
-| ai_go | 1 | spa_click_fill | warm | true | 1071.28 | 0.00 | 1071.28 | 615 | 589 |
-| ai_go | 1 | async_dom | warm | true | 894.28 | 0.00 | 894.28 | 308 | 342 |
-| chromium_cdp | 1 | static | cold | true | 47.38 | 547.14 | 594.52 | 309 | 192 |
-| chromium_cdp | 1 | large_html | warm | true | 57.14 | 0.00 | 57.14 | 220 | 2097334 |
-| chromium_cdp | 1 | unicode | warm | true | 64.10 | 0.00 | 64.10 | 302 | 125 |
-| chromium_cdp | 1 | get_form | warm | true | 162.73 | 0.00 | 162.73 | 244 | 115 |
-| chromium_cdp | 1 | link_cookie | warm | true | 139.47 | 0.00 | 139.47 | 218 | 115 |
-| chromium_cdp | 1 | spa_click_fill | warm | true | 214.34 | 0.00 | 214.34 | 377 | 493 |
-| chromium_cdp | 1 | async_dom | warm | true | 846.51 | 0.00 | 846.51 | 206 | 327 |
-| chromium_cdp | 2 | static | cold | true | 45.82 | 579.33 | 625.15 | 309 | 192 |
-| chromium_cdp | 2 | large_html | warm | true | 54.57 | 0.00 | 54.57 | 220 | 2097334 |
-| chromium_cdp | 2 | unicode | warm | true | 47.33 | 0.00 | 47.33 | 302 | 125 |
-| chromium_cdp | 2 | get_form | warm | true | 116.07 | 0.00 | 116.07 | 244 | 115 |
-| chromium_cdp | 2 | link_cookie | warm | true | 151.43 | 0.00 | 151.43 | 218 | 115 |
-| chromium_cdp | 2 | spa_click_fill | warm | true | 199.83 | 0.00 | 199.83 | 377 | 493 |
-| chromium_cdp | 2 | async_dom | warm | true | 857.11 | 0.00 | 857.11 | 206 | 327 |
-| ai_go | 2 | static | cold | true | 1.62 | 0.00 | 1.62 | 389 | 207 |
-| ai_go | 2 | large_html | warm | true | 20.90 | 0.00 | 20.90 | 288 | 2097349 |
-| ai_go | 2 | unicode | warm | true | 0.54 | 0.00 | 0.54 | 313 | 140 |
-| ai_go | 2 | get_form | warm | true | 0.54 | 0.00 | 0.54 | 311 | 130 |
-| ai_go | 2 | link_cookie | warm | true | 0.52 | 0.00 | 0.52 | 293 | 130 |
-| ai_go | 2 | spa_click_fill | warm | true | 1022.46 | 0.00 | 1022.46 | 615 | 589 |
-| ai_go | 2 | async_dom | warm | true | 891.99 | 0.00 | 891.99 | 308 | 342 |
-| ai_go | 3 | static | cold | true | 1.70 | 0.00 | 1.70 | 389 | 207 |
-| ai_go | 3 | large_html | warm | true | 20.93 | 0.00 | 20.93 | 288 | 2097349 |
-| ai_go | 3 | unicode | warm | true | 0.01 | 0.00 | 0.01 | 313 | 140 |
-| ai_go | 3 | get_form | warm | true | 0.53 | 0.00 | 0.53 | 311 | 130 |
-| ai_go | 3 | link_cookie | warm | true | 0.57 | 0.00 | 0.57 | 293 | 130 |
-| ai_go | 3 | spa_click_fill | warm | true | 1033.38 | 0.00 | 1033.38 | 615 | 589 |
-| ai_go | 3 | async_dom | warm | true | 900.10 | 0.00 | 900.10 | 308 | 342 |
-| chromium_cdp | 3 | static | cold | true | 49.17 | 549.74 | 598.91 | 309 | 192 |
-| chromium_cdp | 3 | large_html | warm | true | 52.83 | 0.00 | 52.83 | 220 | 2097334 |
-| chromium_cdp | 3 | unicode | warm | true | 54.94 | 0.00 | 54.94 | 302 | 125 |
-| chromium_cdp | 3 | get_form | warm | true | 115.73 | 0.00 | 115.73 | 244 | 115 |
-| chromium_cdp | 3 | link_cookie | warm | true | 169.04 | 0.00 | 169.04 | 218 | 115 |
-| chromium_cdp | 3 | spa_click_fill | warm | true | 193.69 | 0.00 | 193.69 | 377 | 493 |
-| chromium_cdp | 3 | async_dom | warm | true | 881.08 | 0.00 | 881.08 | 206 | 327 |
+| ai_go | 1 | public_1 | cold | true | 566.05 | 0.00 | 566.05 | 20414 | 64185 |
+| ai_go | 1 | public_2 | warm | true | 598.40 | 0.00 | 598.40 | 24578 | 34563 |
+| ai_go | 1 | public_3 | warm | true | 793.65 | 0.00 | 793.65 | 20377 | 51294 |
+| ai_go | 1 | public_4 | warm | true | 138.79 | 0.00 | 138.79 | 26615 | 333358 |
+| chromium_cdp | 1 | public_1 | cold | true | 2740.16 | 372.64 | 3112.80 | 17008 | 62707 |
+| chromium_cdp | 1 | public_2 | warm | true | 1325.14 | 0.00 | 1325.14 | 21808 | 34587 |
+| chromium_cdp | 1 | public_3 | warm | true | 978.74 | 0.00 | 978.74 | 16267 | 51009 |
+| chromium_cdp | 1 | public_4 | warm | true | 455.12 | 0.00 | 455.12 | 24463 | 333325 |
 
 ## Interpretation limits
 
@@ -73,3 +39,4 @@ Cold rows include startup in total time. Warm rows reuse the engine; AI Go may l
 - Per-case contexts bound CDP operations and assertion polling; AI Go commands also use the browser's internal request/render timeouts and may exceed the requested case timeout.
 - Results depend on hardware, OS, Chromium version, local caches and task order. The command alternates engine order across repetitions; aggregate medians across different task types describe this fixed corpus only.
 - Very short local HTTP tasks can round to zero at the host timer resolution; these readings do not mean that the operation has no cost.
+- Public checks require a nonempty document and reject reported HTTP errors and a small set of obvious challenge/error phrases. They do not prove semantic completion or distinguish every challenge from usable content; no forms or account actions are performed.

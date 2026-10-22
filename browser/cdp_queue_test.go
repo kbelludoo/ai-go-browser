@@ -20,7 +20,7 @@ func TestCDPEventQueueOverflowReleasesPendingAndKeepsDeliveredResponse(t *testin
 		if _, ok = readCDPSessionTestMessage(t, ctx, ws); !ok {
 			return
 		}
-		for range 256 {
+		for range cdpEventQueueCapacity {
 			if !writeCDPSessionTestMessage(t, ctx, ws, cdpMessage{Method: "Page.frameStartedLoading", Params: json.RawMessage(`{"frameId":"main"}`)}) {
 				return
 			}
@@ -77,7 +77,7 @@ func TestCDPFullEventQueueStillDeliversResponses(t *testing.T) {
 		if !ok {
 			return
 		}
-		for range 256 {
+		for range cdpEventQueueCapacity {
 			if !writeCDPSessionTestMessage(t, ctx, ws, cdpMessage{Method: "Page.frameStartedLoading"}) {
 				return
 			}

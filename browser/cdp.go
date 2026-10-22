@@ -42,6 +42,15 @@ type cdpMessage struct {
 
 const maxCDPEventBytes = 1 << 20
 
+// cdpEventQueueCapacity bounds how far the event consumer may lag behind the
+// reader. The live consumer performs CDP round trips (request interception,
+// frame setup) while a busy page streams Network and Page events, so the queue
+// absorbs bursts measured in thousands of events. Overflow still closes the
+// connection: dropping events silently would strand navigations and paused
+// renderers, which is worse than an explicit failure the session can recover
+// from on the next navigation.
+const cdpEventQueueCapacity = 8192
+
 type cdpConn struct {
 	ws        *websocket.Conn
 	writeGate chan struct{}
@@ -64,7 +73,7 @@ func dialCDP(ctx context.Context, wsURL string) (*cdpConn, error) {
 		ws:        ws,
 		writeGate: make(chan struct{}, 1),
 		pending:   make(map[int]chan cdpMessage),
-		events:    make(chan cdpMessage, 256),
+		events:    make(chan cdpMessage, cdpEventQueueCapacity),
 		closed:    make(chan struct{}),
 	}
 	go c.readLoop()

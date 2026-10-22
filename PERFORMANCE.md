@@ -38,6 +38,8 @@ Frames podem ser selecionados e receber ações, inclusive em outra origem ou em
 
 A conversão de charset reconhece codificações legadas sem reinterpretar todo UTF-8 malformado como Windows-1252. UTF-8 válido reutiliza o buffer; respostas convertidas também precisam caber no orçamento. Recursos JSON com BOM são classificados após a decodificação para manter a redação de campos sensíveis.
 
+A fila de eventos do CDP (`browser/cdp.go`) passou de 256 slots para a constante `cdpEventQueueCapacity` (8192). O consumidor vivo executa round-trips de CDP — a interceptação de `Fetch.requestPaused` e a configuração de frames em `frameEvent` — enquanto uma página carregada emite milhares de eventos de `Network` e `Page`; com 256 slots, uma rajada dessas enchia a fila e o `readLoop` fechava a conexão inteira. O estouro continua fechando a conexão: descartar eventos em silêncio deixaria navegações sem observação e renderizadores esperando depuração, o que é pior do que uma falha explícita. `openLive` agora verifica se o laço de eventos da sessão terminou (`liveSession.ended`) e, em caso positivo, encerra a sessão morta e inicia um Chromium novo antes de navegar, então uma falha de transporte custa uma navegação em vez de derrubar todas as tarefas seguintes; timeouts de navegação continuam preservando a sessão. `TestLiveOpenRestartsFailedConnection` cobre a recuperação, e os testes de fila preenchem a capacidade real declarada pela constante.
+
 O lançamento headless cria somente a aba controlada por CDP, sem deixar uma aba inicial adicional. Perfis headless temporários usam flags conservadoras de serviços de fundo presentes no Playwright; perfis persistentes mantêm extensões e sincronização. O teste de inicialização verifica exatamente um target de página e um PID válido. Os relatórios Playwright anteriores a essa mudança foram preservados como `playwright-comparison-initial-defaults.*`.
 
 A CLI ativa `-compact=true`: evita construir e reter Markdown a cada navegação e limita as listas observadas a 200 links e 100 headings. O DOM permanece completo e os números omitidos aparecem no JSON. `markdown` gera a representação completa somente para essa resposta; `-compact=false` restaura a saída completa automática. A biblioteca conserva o comportamento completo por padrão.
@@ -94,7 +96,54 @@ O payload menor é o custo de tokens por leitura: os tokens de contexto do LLM s
 
 ## Teste em sites reais (100 URLs)
 
-Cem URLs públicas distintas, lista em [`benchmark-results/real-sites-100.txt`](benchmark-results/real-sites-100.txt), origem e critérios em [`benchmark-results/real-sites-candidates.txt`](benchmark-results/real-sites-candidates.txt) (127 candidatas; caíram 5 por URL morta — DNS, 404 ou 500 — e entraram 5 reposições). Cada motor recebe as mesmas 100 URLs, uma sessão por motor, ordem alternada entre repetições, timeout de 20 s por caso, modo `-public` de checagem somente leitura. Relatório em [`benchmark-results/real-sites-100.md`](benchmark-results/real-sites-100.md) e JSON ao lado.
+Cem URLs públicas distintas, lista em [`benchmark-results/real-sites-100.txt`](benchmark-results/real-sites-100.txt), origem e critérios em [`benchmark-results/real-sites-candidates.txt`](benchmark-results/real-sites-candidates.txt) (127 candidatas; caíram 5 por URL morta — DNS, 404 ou 500 — e entraram 5 reposições). Cada motor recebe as mesmas 100 URLs, uma sessão por motor e por rodada, ordem alternada entre rodadas, timeout de 20 s por caso, modo `-public` de checagem somente leitura.
+
+### Rodada atual: 5 repetições, após a correção da fila (17/10/2026)
+
+Relatório em [`benchmark-results/real-sites-100-queuefix.md`](benchmark-results/real-sites-100-queuefix.md) e [JSON](benchmark-results/real-sites-100-queuefix.json). Os dois motores usam o mesmo executável Edge/Chromium.
+
+| Métrica, 5 rodadas × 100 URLs | AI Go | Chromium/CDP |
+| --- | ---: | ---: |
+| Tarefas que passaram | 452/500 (89–92 por rodada) | 444/500 (88–90 por rodada) |
+| Rodadas vencidas em assertivas | 5 de 5 | 0 de 5 |
+| Média do tempo completo do corpus | 341.172,67 ms | 305.230,42 ms |
+| Maior amostra RSS Chromium | 2.068,47 MiB | 2.242,88 MiB |
+| Maior amostra RSS do harness Go | 94,68 MiB | 18,73 MiB |
+| Maior heap Go do worker | 58,23 MiB | 5,06 MiB |
+| Mediana de JSON compacto | 22.169 B | 19.981 B |
+
+**Nenhuma falha por overflow de fila em 500 tarefas.** O bug que derrubou `public_89` (apnews.com) e envenenou as 11 tarefas seguintes na rodada anterior não se repetiu; `public_89` falhou em 1 de 5 rodadas com HTTP 403, e as demais URLs 90–100 não herdaram a falha.
+
+**Latência pareada.** O total do corpus favorece quem falha cedo, então a comparação justa é nos pares em que **os dois** passaram na mesma rodada:
+
+| Nos 436 pares em que ambos passaram | AI Go | Chromium/CDP |
+| --- | ---: | ---: |
+| Soma do tempo de tarefa | 817.242 ms | 933.482 ms |
+| Média | 1.874,4 ms | 2.141,0 ms |
+| Mediana | 1.333,2 ms | 1.886,5 ms |
+| P90 | 3.646,6 ms | 3.753,6 ms |
+
+AI Go foi mais rápido em 244 dos 436 pares (56,0%), com 12,5% menos tempo agregado e mediana 29,3% menor.
+
+**Tempo total do corpus — Chromium vence, por falha rápida.** A média do corpus completo (341,2 s contra 305,2 s) favorece o Chromium porque ele recebe HTTP 403 em cerca de 230 ms nos sites de desafio anti-bot, enquanto o AI Go espera o timeout de 20 s antes de falhar. São 6 sites × 5 rodadas × ~20 s de esperas do AI Go. Isso é uma desvantagem real de comportamento em sites que bloqueiam cliente automatizado.
+
+**Compatibilidade — AI Go vence agora.** 452/500 contra 444/500, com mais assertivas em todas as rodadas. As 48 falhas do AI Go se distribuem assim:
+
+- **6 sites de desafio anti-bot, 5/5 rodadas cada** (`stackoverflow.com`, `superuser.com`, `serverfault.com`, `askubuntu.com`, `w3.org`, `opensource.org`). O Chromium também falhou nesses (HTTP 403 em ~230 ms); o AI Go estoura o timeout de 20 s em vez de receber o 403.
+- **4 falhas de `gnu.org`** com timeout de rede — o Chromium falhou 5/5 no mesmo site.
+- **5 falhas de `openlibrary.org`** e **4 de `nasa.gov`** — os dois motores falham nos mesmos sites (timeout de navegação em ambos).
+- **1 falha cada** em `python.org`, `php.net` e `ruby-lang.org` (timeout transitório de DNS/TLS; o Chromium falhou 5/5 em `ruby-lang.org`) e 1 `ERR_CONNECTION_RESET` em `postgresql.org`.
+- **1 falha com HTTP 403 em `apnews.com`**, o site que derrubava a sessão antiga; o desafio anti-bot varia entre rodadas.
+
+Do lado do Chromium, as 56 falhas incluem `archive.org` (5/5 com timeout; o AI Go passou), `ruby-lang.org` (5/5), `askubuntu.com` (2/5 com 403), `ubuntu.com`, `bbc.co.uk` e `en.wikisource.org` (rate limit 429) com 1–2 falhas cada, além dos mesmos sites de desafio.
+
+**Memória.** O AI Go amostrou 7,8% menos RSS na árvore do Chromium (2.068,47 contra 2.242,88 MiB), mas continua 5,0× mais pesado no processo Go do harness (94,68 contra 18,73 MiB) porque parseia e serializa o DOM em Go, enquanto o baseline só repassa a página. São contadores diferentes e não devem ser somados como pico único.
+
+**Limites desta medição.** São 5 rodadas na mesma máquina e na mesma rede, com variância diária de carga e de bloqueio anti-bot; a dispersão entre dias não foi medida. `Document bytes` e `Compact JSON bytes` em página real chegam a megabytes e dezenas de kilobytes: o ganho percentual do corpus local não se transfere automaticamente para a web. A lista foi filtrada por alcance com requisição HTTP antes do teste, o que a enviesa para sites que não bloqueiam cliente automatizado. Nenhuma conta, formulário ou ação foi executada; o modo `-public` só lê. Nenhum token de modelo foi medido. Os 500 pares de tarefas não são independentes entre si (mesmas URLs em rodadas repetidas), então os números descrevem esta lista e esta semana, não a web em geral.
+
+### Histórico: rodada anterior, 1 repetição, antes da correção (10/10/2026)
+
+Relatório em [`benchmark-results/real-sites-100.md`](benchmark-results/real-sites-100.md) e [JSON](benchmark-results/real-sites-100.json). Uma repetição por motor, sem alternância de ordem entre repetições — os intervalos são amplos e valem como ordem de grandeza, não como diferença estatisticamente confirmada.
 
 | Métrica, 100 URLs, 1 repetição | AI Go | Chromium/CDP |
 | --- | ---: | ---: |
@@ -105,28 +154,9 @@ Cem URLs públicas distintas, lista em [`benchmark-results/real-sites-100.txt`](
 | Maior heap Go do worker | 58,05 MiB | 3,35 MiB |
 | Mediana de JSON compacto | 24.849 B | 20.120 B |
 
-**Latência pareada.** O total do corpus favorece quem falha cedo, então a comparação justa é só nos 75 sites em que **os dois** passaram:
+Nos 75 sites em que **os dois** passaram: soma 114.172 ms contra 158.495 ms (AI Go 28,0% menor), média 1.522 ms contra 2.113 ms, mediana 1.170 ms contra 2.047 ms, P90 3.487 ms contra 4.967 ms; AI Go mais rápido em 45 dos 75 (60,0%).
 
-| Nos 75 sites em que ambos passaram | AI Go | Chromium/CDP |
-| --- | ---: | ---: |
-| Soma do tempo de tarefa | 114.172 ms | 158.495 ms |
-| Média | 1.522 ms | 2.113 ms |
-| Mediana | 1.170 ms | 2.047 ms |
-| P90 | 3.487 ms | 4.967 ms |
-
-AI Go foi mais rápido em 45 dos 75 (60,0%), com 28,0% a menos de tempo agregado e mediana 42,9% menor.
-
-**Compatibilidade — AI Go perde.** 81/100 contra 87/100. As 19 falhas do AI Go se dividem em três causas:
-
-- **12 falhas são um único bug de sessão.** Os casos `public_89` até `public_100` falharam **todos** com `cdp event queue overflow (capacity 256)`, e a partir daí a conexão CDP morre de vez (`task_ms` = 0 nos 11 seguintes). Não é sítio específico: é acumulação numa sessão longa. A fila de eventos do `cdpConn` tem 256 slots e, quando enche, o `readLoop` fecha a conexão inteira em vez de descartar o evento (`browser/cdp.go:108-114`). Quem drena a fila é o laço `liveSession.events` (`browser/live.go:121`), que dentro do laço faz round-trips bloqueantes — o setup de iframe em `frameEvent` são até 6 chamadas CDP em série com timeout de 5 s (`browser/live.go:39-70`) e a continuação de `Fetch.requestPaused` tem 2 s (`browser/live.go:286`). Enquanto o consumidor está parado, um site carregado emite centenas de eventos e a fila transborda. Corrigir isso é a diferença entre 81 e 93 de 100.
-- **5 falhas são timeout** (`public_26/27/28/29/39` = stackoverflow.com, superuser, serverfault, askubuntu, w3.org), que o Chromium também não passou (HTTP 403). Os dois motores falham nos mesmos sites de proteção contra bot; o AI Go espera até estourar o prazo em vez de receber 403.
-- **2 falhas são do lado do servidor ou da rede**: `public_72` (gutenberg.org, HTTP 504 nos dois motores) e `public_73` (openlibrary.org, timeout de navegação).
-
-Dos 13 erros do Chromium, 6 são HTTP 403 da mesma leva, 2 são falha de DNS transitória, 3 são timeout e 1 é 504.
-
-**Memória.** O AI Go amostrou 19,5% menos RSS na árvore do Chromium (2.441 contra 3.031 MiB), mas é **5,7× mais pesado no processo Go do harness** (94,26 contra 16,68 MiB) porque parseia e serializa o DOM em Go, enquanto o baseline só repassa a página. São contadores diferentes e não devem ser somados como pico único.
-
-**Limites desta medição.** Uma repetição por motor, sem alternância de ordem entre repetições — os intervalos são amplos e valem como ordem de grandeza, não como diferença estatisticamente confirmada. As falhas reduzem a amostra pareada de 100 para 75. `Document bytes` e `Compact JSON bytes` em página real chegam a 2 MB e 25 KB, contra 697 B e 313 B nos fixtures locais: o ganho percentual do corpus local não se transfere automaticamente para a web. A lista foi filtrada por alcance com requisição HTTP antes do teste, o que a enviesa para sites que não bloqueiam cliente automatizado. Nenhuma conta, formulário ou ação foi executada; o modo `-public` só lê. Nenhum token de modelo foi medido.
+As 19 falhas do AI Go daquela rodada se dividiam em: **12 causadas por um único bug de sessão** — `public_89` a `public_100` falharam com `cdp event queue overflow (capacity 256)` e, a partir daí, a conexão CDP morria de vez (`task_ms` = 0 nas 11 seguintes); 5 timeouts nos mesmos sites de proteção contra bot que o Chromium também não passou; e 2 falhas de servidor/rede (`gutenberg.org` com HTTP 504 nos dois motores e `openlibrary.org` com timeout). Dos 13 erros do Chromium, 6 eram HTTP 403 da mesma leva, 2 falha de DNS transitória, 3 timeout e 1 504. Esse bug de fila foi corrigido em 17/10/2026 (ver a seção de mudanças acima) e a rodada atual mede o código corrigido.
 
 ## Reproduzir
 
@@ -142,11 +172,11 @@ go build -o bin/aigobrowser.exe ./cmd/aigobrowser
 go build -o bin/comparebrowser.exe ./cmd/comparebrowser
 $u = Get-Content benchmark-results/real-sites-100.txt
 $a = @('-public'); foreach ($x in $u) { $a += @('-url', $x) }
-$a += @('-runs','1','-timeout','20s','-json','benchmark-results/real-sites-100.json','-markdown','benchmark-results/real-sites-100.md')
+$a += @('-runs','5','-timeout','20s','-json','benchmark-results/real-sites-100-queuefix.json','-markdown','benchmark-results/real-sites-100-queuefix.md')
 .\bin\comparebrowser.exe @a
 ```
 
-Os microbenchmarks de navegação usam um transporte HTTP local em memória; as demos usam um servidor em `127.0.0.1`. Os testes Chromium usam um servidor local e o navegador instalado. O teste de sites reais usa a rede externa, leva em torno de 10 minutos nesta máquina e sai com código 1 quando alguma tarefa falha — o relatório é gravado antes do código de saída.
+Os microbenchmarks de navegação usam um transporte HTTP local em memória; as demos usam um servidor em `127.0.0.1`. Os testes Chromium usam um servidor local e o navegador instalado. O teste de sites reais usa a rede externa, leva em torno de 10 minutos com `-runs 1` e cerca de uma hora com `-runs 5` nesta máquina, e sai com código 1 quando alguma tarefa falha — o relatório é gravado antes do código de saída.
 
 ## Comparativo de tarefas e páginas públicas
 
