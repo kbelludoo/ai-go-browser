@@ -340,6 +340,7 @@ func main() {
 			os.Exit(1)
 		}
 		defer cleanup()
+		b.SetBlockPrivateNetworks(false)
 		b.Allowed["127.0.0.1"] = true
 		if *demoActions {
 			opening := b.Execute(browser.Command{Cmd: "open", URL: u})
