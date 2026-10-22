@@ -1,16 +1,18 @@
 package browser
 
 import (
+	"bufio"
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	utls "github.com/refraction-networking/utls"
+	"golang.org/x/net/http2"
 )
 
 var (
@@ -65,80 +67,107 @@ func isPrivateIP(ip net.IP) bool {
 	return false
 }
 
-// NewSafeTransport returns an http.Transport with DNS resolution verification against SSRF.
-func NewSafeTransport(blockPrivateNetworks bool) *http.Transport {
-	customDialer := &net.Dialer{
-		Timeout:   10 * time.Second,
-		KeepAlive: 30 * time.Second,
+// SafeTransport combines SSRF protection with genuine Chrome uTLS and HTTP/2 multiplexing.
+type SafeTransport struct {
+	dialer               *net.Dialer
+	blockPrivateNetworks bool
+	tr2                  *http2.Transport
+	connPool             sync.Map
+}
+
+func (s *SafeTransport) dialSafe(ctx context.Context, network, addr string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil, err
 	}
 
-	safeDialContext := func(ctx context.Context, network, addr string) (net.Conn, error) {
-		host, port, err := net.SplitHostPort(addr)
+	if s.blockPrivateNetworks {
+		lowerHost := strings.ToLower(host)
+		if lowerHost == "localhost" || strings.HasSuffix(lowerHost, ".localhost") || lowerHost == "metadata.google.internal" {
+			return nil, fmt.Errorf("%w: %s", ErrSSRFBlocked, host)
+		}
+
+		ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("dns resolution failed for %s: %w", host, err)
 		}
 
-		// If private network blocking is enabled, resolve DNS and inspect IPs
-		if blockPrivateNetworks {
-			// Check direct localhost string matches
-			lowerHost := strings.ToLower(host)
-			if lowerHost == "localhost" || strings.HasSuffix(lowerHost, ".localhost") || lowerHost == "metadata.google.internal" {
-				return nil, fmt.Errorf("%w: %s", ErrSSRFBlocked, host)
-			}
-
-			ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
-			if err != nil {
-				return nil, fmt.Errorf("dns resolution failed for %s: %w", host, err)
-			}
-
-			// Validate every resolved IP
-			for _, ip := range ips {
-				if isPrivateIP(ip) {
-					return nil, fmt.Errorf("%w: host %s resolved to private IP %s", ErrSSRFBlocked, host, ip.String())
-				}
-			}
-
-			// Dial the first valid resolved IP directly to prevent DNS rebinding attacks between check and connect
-			if len(ips) > 0 {
-				addr = net.JoinHostPort(ips[0].String(), port)
+		for _, ip := range ips {
+			if isPrivateIP(ip) {
+				return nil, fmt.Errorf("%w: host %s resolved to private IP %s", ErrSSRFBlocked, host, ip.String())
 			}
 		}
 
-		return customDialer.DialContext(ctx, network, addr)
+		if len(ips) > 0 {
+			addr = net.JoinHostPort(ips[0].String(), port)
+		}
 	}
 
-	safeDialTLSContext := func(ctx context.Context, network, addr string) (net.Conn, error) {
-		host, _, err := net.SplitHostPort(addr)
-		if err != nil {
-			return nil, err
-		}
-		rawConn, err := safeDialContext(ctx, network, addr)
-		if err != nil {
-			return nil, err
-		}
+	return s.dialer.DialContext(ctx, network, addr)
+}
 
-		uConfig := &utls.Config{
-			ServerName: host,
+func (s *SafeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	host := req.URL.Hostname()
+	port := req.URL.Port()
+	if port == "" {
+		if req.URL.Scheme == "http" {
+			port = "80"
+		} else {
+			port = "443"
 		}
-		uConn := utls.UClient(rawConn, uConfig, utls.HelloChrome_120)
-		if err := uConn.HandshakeContext(ctx); err != nil {
-			_ = rawConn.Close()
-			return nil, err
-		}
-		return uConn, nil
+	}
+	addr := net.JoinHostPort(host, port)
+
+	rawConn, err := s.dialSafe(req.Context(), "tcp", addr)
+	if err != nil {
+		return nil, err
 	}
 
-	return &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           safeDialContext,
-		DialTLSContext:        safeDialTLSContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          50,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		TLSClientConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
+	// Plain HTTP/1.1
+	if req.URL.Scheme == "http" {
+		if err := req.Write(rawConn); err != nil {
+			rawConn.Close()
+			return nil, err
+		}
+		return http.ReadResponse(bufio.NewReader(rawConn), req)
+	}
+
+	// HTTPS with genuine Chrome uTLS and GREASE
+	uConfig := &utls.Config{
+		ServerName: host,
+	}
+	uConn := utls.UClient(rawConn, uConfig, utls.HelloChrome_120)
+	if err := uConn.HandshakeContext(req.Context()); err != nil {
+		rawConn.Close()
+		return nil, err
+	}
+
+	// HTTP/2 negotiation
+	if uConn.ConnectionState().NegotiatedProtocol == "h2" {
+		h2Conn, err := s.tr2.NewClientConn(uConn)
+		if err != nil {
+			uConn.Close()
+			return nil, err
+		}
+		return h2Conn.RoundTrip(req)
+	}
+
+	// Fallback HTTP/1.1 over uTLS
+	if err := req.Write(uConn); err != nil {
+		uConn.Close()
+		return nil, err
+	}
+	return http.ReadResponse(bufio.NewReader(uConn), req)
+}
+
+// NewSafeTransport returns a SafeTransport implementing http.RoundTripper with DNS resolution verification against SSRF.
+func NewSafeTransport(blockPrivateNetworks bool) http.RoundTripper {
+	return &SafeTransport{
+		dialer: &net.Dialer{
+			Timeout:   10 * time.Second,
+			KeepAlive: 30 * time.Second,
 		},
+		blockPrivateNetworks: blockPrivateNetworks,
+		tr2:                  &http2.Transport{},
 	}
 }
