@@ -2,7 +2,6 @@ package browser
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -69,6 +68,10 @@ type Browser struct {
 	Allowed   map[string]bool
 	AllowAll  bool
 	AllowPost bool
+	// NativeOnly enforces strict 100% Go execution: never spawns external Chromium/Edge/Firefox processes.
+	NativeOnly bool
+	// BlockPrivateNetworks prevents requests to internal RFC1918 IPs, loopback, and cloud metadata (SSRF defense).
+	BlockPrivateNetworks bool
 	MaxText   int
 	// MaxHistory bounds retained URLs. Zero disables history; a negative value is unlimited.
 	MaxHistory int
@@ -141,7 +144,15 @@ func (b *Browser) rememberCurrent() {
 
 func New(allowed []string, allowPost bool) *Browser {
 	jar, _ := cookiejar.New(nil)
-	b := &Browser{Allowed: map[string]bool{}, AllowPost: allowPost, MaxText: 5000, MaxHistory: 100, Engine: "auto", OperationTimeout: 20 * time.Second}
+	b := &Browser{
+		Allowed:          map[string]bool{},
+		AllowPost:        allowPost,
+		MaxText:          5000,
+		MaxHistory:       100,
+		Engine:           "auto",
+		OperationTimeout: 20 * time.Second,
+		NativeOnly:       os.Getenv("AI_GO_BROWSER_NATIVE_ONLY") == "1",
+	}
 	for _, h := range allowed {
 		if h = strings.ToLower(strings.TrimSpace(h)); h != "" {
 			b.Allowed[h] = true
@@ -150,22 +161,7 @@ func New(allowed []string, allowPost bool) *Browser {
 			}
 		}
 	}
-	dialer := &net.Dialer{
-		Timeout:   10 * time.Second,
-		KeepAlive: 30 * time.Second,
-	}
-	tr := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
-		DialContext:           dialer.DialContext,
-		ForceAttemptHTTP2:     true,
-		MaxIdleConns:          50,
-		IdleConnTimeout:       90 * time.Second,
-		TLSHandshakeTimeout:   10 * time.Second,
-		ExpectContinueTimeout: 1 * time.Second,
-		TLSClientConfig: &tls.Config{
-			MinVersion: tls.VersionTLS12,
-		},
-	}
+	tr := NewSafeTransport(false)
 	b.client = &http.Client{Timeout: 20 * time.Second, Jar: jar, Transport: tr}
 	b.client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
 		if len(via) > 15 {
@@ -175,12 +171,40 @@ func New(allowed []string, allowPost bool) *Browser {
 	}
 	return b
 }
+
+// NewNative creates a Browser configured for strict 100% Go execution (no external browsers) with SSRF defense.
+func NewNative(allowed []string, allowPost bool) *Browser {
+	b := New(allowed, allowPost)
+	b.NativeOnly = true
+	b.SetBlockPrivateNetworks(true)
+	return b
+}
+
+// SetBlockPrivateNetworks toggles SSRF defense to block RFC1918 / loopback / cloud metadata.
+func (b *Browser) SetBlockPrivateNetworks(block bool) {
+	b.BlockPrivateNetworks = block
+	jar := b.client.Jar
+	b.client.Transport = NewSafeTransport(block)
+	b.client.Jar = jar
+}
+
 func (b *Browser) validate(u *url.URL) error {
 	if u == nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
 		return errors.New("only http(s) URLs are allowed")
 	}
 	if u.User != nil {
 		return errors.New("credentials in URL not allowed")
+	}
+	if b.BlockPrivateNetworks {
+		host := strings.ToLower(u.Hostname())
+		if host == "localhost" || strings.HasSuffix(host, ".localhost") || host == "metadata.google.internal" {
+			return fmt.Errorf("%w: %s", ErrSSRFBlocked, host)
+		}
+		if ip := net.ParseIP(host); ip != nil {
+			if isPrivateIP(ip) {
+				return fmt.Errorf("%w: %s", ErrSSRFBlocked, host)
+			}
+		}
 	}
 	if b.AllowAll || b.Allowed["*"] {
 		return nil
@@ -306,6 +330,9 @@ func (b *Browser) request(method, target string, params url.Values, saveHistory 
 
 // RenderPageWithJS opens a persistent Chromium page, including later JS interactions.
 func (b *Browser) RenderPageWithJS(targetURL string) error {
+	if b.NativeOnly {
+		return ErrExternalBrowserDisabled
+	}
 	return b.openLive(targetURL, true)
 }
 
@@ -334,10 +361,14 @@ func (b *Browser) Execute(c Command) Result {
 		switch cmd {
 		case "open":
 			if c.RenderJS || b.Engine == "chromium" || b.live != nil {
-				err = b.RenderPageWithJS(c.URL)
+				if b.NativeOnly {
+					err = ErrExternalBrowserDisabled
+				} else {
+					err = b.RenderPageWithJS(c.URL)
+				}
 			} else {
 				err = b.request("GET", c.URL, nil, true)
-				if err == nil && b.Engine != "http" && b.AutoRenderJS && b.Current != nil && strings.HasPrefix(b.Current.Stack.RenderMode, "CSR") && utf8.RuneCountInString(b.Current.Text) < 100 {
+				if err == nil && !b.NativeOnly && b.Engine != "http" && b.AutoRenderJS && b.Current != nil && strings.HasPrefix(b.Current.Stack.RenderMode, "CSR") && utf8.RuneCountInString(b.Current.Text) < 100 {
 					// HTTP navigation already recorded the old page. Rendering the
 					// same destination must not duplicate it in history.
 					if renderErr := b.openLive(b.Current.URL, false); renderErr != nil {

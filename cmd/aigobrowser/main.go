@@ -211,6 +211,8 @@ func printPrettyPage(p *browser.Page, showMarkdown bool) {
 func main() {
 	hosts := flag.String("allow-hosts", "", "Comma-separated domain/IP allowlist")
 	allowAll := flag.Bool("allow-all", true, "Allow navigation to any public domain/IP (default: true)")
+	nativeOnly := flag.Bool("native-only", true, "Strict 100% Go execution: never spawn Chrome/Chromium/Edge subprocesses (default: true)")
+	blockPrivate := flag.Bool("block-private", true, "Block requests to private RFC1918 IPs, loopback, and cloud metadata (SSRF defense, default: true)")
 	allowPost := flag.Bool("allow-post", false, "Allow POST form submissions with confirm:true")
 	selftest := flag.Bool("demo", false, "Start internal test pages, print JSON results, and exit")
 	demoEvents := flag.Bool("demo-events", false, "Demonstrate persistent JavaScript click events (needs -js-worker)")
@@ -268,6 +270,10 @@ func main() {
 	b.UserAgent = *userAgent
 	b.AutoRenderJS = *autoJS
 	b.SystemBrowser = *browserPath
+	b.NativeOnly = *nativeOnly
+	if *blockPrivate {
+		b.SetBlockPrivateNetworks(true)
+	}
 	if *hosts == "" && *allowAll {
 		b.AllowAll = true
 	}

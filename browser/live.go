@@ -118,6 +118,17 @@ func (l *liveSession) notifyLocked() {
 	l.changed = make(chan struct{})
 }
 
+// ended reports that the event loop stopped, which happens when either CDP
+// connection fails. Commands on such a session can never succeed again.
+func (l *liveSession) ended() bool {
+	select {
+	case <-l.done:
+		return true
+	default:
+		return false
+	}
+}
+
 func (l *liveSession) events(ctx context.Context) {
 	defer close(l.done)
 	for {
@@ -380,6 +391,9 @@ func (l *liveSession) settle(ctx context.Context) error {
 }
 
 func (b *Browser) openLive(target string, saveHistory bool) error {
+	if b.NativeOnly {
+		return ErrExternalBrowserDisabled
+	}
 	u, err := url.Parse(target)
 	if err != nil {
 		return err
@@ -390,6 +404,13 @@ func (b *Browser) openLive(target string, saveHistory bool) error {
 	ctx, cancel := b.liveContext()
 	defer cancel()
 	fresh := b.live == nil
+	if !fresh && b.live.ended() {
+		// A failed CDP connection fails every later command with the same
+		// cause. This navigation starts a fresh renderer instead of reusing a
+		// dead session, so one transport failure costs one task, not the run.
+		b.closeLive()
+		fresh = true
+	}
 	if fresh {
 		if err := b.startLive(ctx); err != nil {
 			return err

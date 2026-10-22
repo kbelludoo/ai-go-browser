@@ -54,9 +54,9 @@ type Server struct {
 	memory   *memory.Engine
 }
 
-// NewServer creates a new MCP server wrapping the AI Go Browser engine.
+// NewServer creates a new MCP server wrapping the AI Go Browser engine in strict Native-only mode.
 func NewServer() *Server {
-	b := browser.New([]string{"*"}, true)
+	b := browser.NewNative([]string{"*"}, true)
 	r := resolver.NewSelfHealingResolver()
 	mem, err := memory.NewEngine("")
 	if err == nil && mem != nil {
@@ -359,13 +359,31 @@ func (s *Server) callTool(name string, argsRaw json.RawMessage) (string, error) 
 		if len(res.Page.Buttons) > 0 || len(res.Page.Inputs) > 0 || len(res.Page.Links) > 0 {
 			sb.WriteString("\n\n### Interactive Elements:\n")
 			for _, b := range res.Page.Buttons {
-				sb.WriteString(fmt.Sprintf("- [%s] Button: %s\n", b.Ref, b.Label))
+				actionInfo := ""
+				if b.Action != nil && b.Action.ActionSummary != "" {
+					actionInfo = fmt.Sprintf(" [%s]", b.Action.ActionSummary)
+				}
+				sb.WriteString(fmt.Sprintf("- [%s] Button: %s%s\n", b.Ref, b.Label, actionInfo))
 			}
 			for _, f := range res.Page.Inputs {
 				sb.WriteString(fmt.Sprintf("- [%s] Input (%s): %s\n", f.Ref, f.Type, f.Name))
 			}
 			for _, l := range res.Page.Links {
 				sb.WriteString(fmt.Sprintf("- [%s] Link: %s -> %s\n", l.Ref, l.Label, l.URL))
+			}
+		}
+
+		if res.Page.Hydration != nil {
+			if res.Page.Hydration.Summary != "" {
+				sb.WriteString(fmt.Sprintf("\n### 📦 Structured Hydration & State (Zero-JS Extraction):\n%s\n", res.Page.Hydration.Summary))
+			}
+			if len(res.Page.Hydration.JSONLD) > 0 {
+				sb.WriteString("\n#### Schema.org Entities (JSON-LD):\n")
+				for _, ent := range res.Page.Hydration.JSONLD {
+					if b, err := json.Marshal(ent); err == nil {
+						sb.WriteString(fmt.Sprintf("- %s\n", string(b)))
+					}
+				}
 			}
 		}
 		return sb.String(), nil

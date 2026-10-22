@@ -57,6 +57,9 @@ func (d *Document) locator(node *Node) controlLocator {
 // controls, while retaining fresh hidden tokens from the new response. Every
 // locator is checked before any values are applied; it never submits a form.
 func (b *Browser) promoteForm(formRef, buttonRef string) (string, string, error) {
+	if b.NativeOnly {
+		return "", "", ErrExternalBrowserDisabled
+	}
 	if b.Document == nil || b.Current == nil {
 		return "", "", errors.New("no page to promote")
 	}

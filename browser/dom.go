@@ -496,13 +496,17 @@ func (d *Document) collectForms(base *url.URL) ([]Form, []Button, []Field) {
 				label = "(button)"
 			}
 			button := Button{Ref: "b" + strconv.Itoa(len(buttons)+1), ID: n.prop("id"), Label: label, Type: typ, Name: n.prop("name"), Value: n.prop("value"), Disabled: n.disabled()}
+			var formPtr *Form
 			if associated {
 				button.FormRef = forms[formIndex].Ref
 				if typ == "submit" && !button.Disabled && forms[formIndex].SubmitRef == "" {
 					forms[formIndex].SubmitRef = button.Ref
 					forms[formIndex].SubmitLabel = label
 				}
+				formPtr = &forms[formIndex]
 			}
+			meta := AnalyzeElementAction(button.Ref, n.Tag, label, n.Attr, formPtr)
+			button.Action = &meta
 			buttons = append(buttons, button)
 			n.ref = button.Ref
 			d.buttons[button.Ref] = n

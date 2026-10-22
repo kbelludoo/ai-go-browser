@@ -15,14 +15,15 @@ type Link struct {
 	URL   string `json:"url"`
 }
 type Button struct {
-	Ref      string `json:"ref"`
-	ID       string `json:"id,omitempty"`
-	Label    string `json:"label"`
-	Type     string `json:"type,omitempty"`
-	Name     string `json:"name,omitempty"`
-	Value    string `json:"value,omitempty"`
-	Disabled bool   `json:"disabled,omitempty"`
-	FormRef  string `json:"form_ref,omitempty"`
+	Ref      string                 `json:"ref"`
+	ID       string                 `json:"id,omitempty"`
+	Label    string                 `json:"label"`
+	Type     string                 `json:"type,omitempty"`
+	Name     string                 `json:"name,omitempty"`
+	Value    string                 `json:"value,omitempty"`
+	Disabled bool                   `json:"disabled,omitempty"`
+	FormRef  string                 `json:"form_ref,omitempty"`
+	Action   *ButtonActionMetadata  `json:"action,omitempty"`
 }
 type Heading struct {
 	Level int    `json:"level"`
@@ -91,6 +92,7 @@ type Page struct {
 	Truncated       bool              `json:"truncated,omitempty"`
 	OmittedLinks    int               `json:"omitted_links,omitempty"`
 	OmittedHeadings int               `json:"omitted_headings,omitempty"`
+	Hydration       *HydrationPayload `json:"hydration,omitempty"`
 }
 
 type token struct {
@@ -481,6 +483,7 @@ func Parse(raw []byte, baseURL string, status, bytesRead, textLimit int) Page {
 	p.Title = norm(title.String())
 	p.Text = text.text.String()
 	p.Truncated = text.truncated
+	p.Hydration = ExtractHydration(string(raw))
 	if hasControls {
 		if doc, err := ParseDocument(raw, baseURL, status, bytesRead); err == nil {
 			p.Forms, p.Buttons, p.Inputs = doc.collectForms(base)
