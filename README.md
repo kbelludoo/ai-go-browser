@@ -2,6 +2,7 @@
 
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8?style=flat&logo=go)](https://golang.org)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Audit CI](https://github.com/kbelludoo/ai-go-browser/actions/workflows/empirical-audit.yml/badge.svg)](https://github.com/kbelludoo/ai-go-browser/actions/workflows/empirical-audit.yml)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)](#)
 [![Memory](https://img.shields.io/badge/RAM-12--24%20MiB-success)](#)
 [![TLS](https://img.shields.io/badge/uTLS-Chrome%20GREASE%20JA4-success)](#)
@@ -132,6 +133,19 @@ go run ./cmd/wasmbench
 ```powershell
 go run ./cmd/benchmark_200_sites
 ```
+
+### 5. Reprodução Completa da Auditoria em 1 Comando
+Para que qualquer pesquisador, auditor ou desenvolvedor possa reproduzir localmente todas as medições empíricas sem configurações adicionais:
+
+```bash
+# No Linux ou macOS:
+bash reproduce.sh
+
+# No Windows (PowerShell):
+.\reproduce.ps1
+```
+
+O script compila os binários em Go puro, executa o autoteste `-demo`, audita a assinatura TLS contra o `tls.peet.ws` e executa as tarefas do WebArena, salvando os resultados em `benchmark-results/`.
 
 ---
 
