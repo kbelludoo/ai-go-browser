@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -68,12 +69,58 @@ func isPrivateIP(ip net.IP) bool {
 	return false
 }
 
-// SafeTransport combines SSRF protection with genuine Chrome uTLS and HTTP/2 multiplexing.
+// SafeTransport combines SSRF protection with genuine Chrome uTLS, HTTP/2 multiplexing, and automatic Cloudflare WARP tunnel fallback.
 type SafeTransport struct {
 	dialer               *net.Dialer
 	blockPrivateNetworks bool
 	tr2                  *http2.Transport
 	connPool             sync.Map
+	warpDomains          sync.Map // host -> bool (domains that require Cloudflare WARP to bypass datacenter IP blocks)
+}
+
+func getWARPProxyAddr() string {
+	if env := strings.TrimSpace(os.Getenv("AI_GO_WARP_PROXY")); env != "" {
+		return env
+	}
+	return "127.0.0.1:40000"
+}
+
+func (s *SafeTransport) dialViaWARPProxy(ctx context.Context, hostPort string) (net.Conn, error) {
+	host, _, err := net.SplitHostPort(hostPort)
+	if err != nil {
+		return nil, err
+	}
+	if s.blockPrivateNetworks {
+		lowerHost := strings.ToLower(host)
+		if lowerHost == "localhost" || strings.HasSuffix(lowerHost, ".localhost") || lowerHost == "metadata.google.internal" {
+			return nil, fmt.Errorf("%w: %s", ErrSSRFBlocked, host)
+		}
+	}
+
+	proxyAddr := getWARPProxyAddr()
+	proxyConn, err := s.dialer.DialContext(ctx, "tcp4", proxyAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	connectReq := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\nUser-Agent: Mozilla/5.0\r\n\r\n", hostPort, hostPort)
+	if _, err := proxyConn.Write([]byte(connectReq)); err != nil {
+		_ = proxyConn.Close()
+		return nil, err
+	}
+
+	br := bufio.NewReader(proxyConn)
+	resp, err := http.ReadResponse(br, &http.Request{Method: http.MethodConnect})
+	if err != nil {
+		_ = proxyConn.Close()
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		_ = proxyConn.Close()
+		return nil, fmt.Errorf("warp proxy CONNECT failed with status %d", resp.StatusCode)
+	}
+
+	return proxyConn, nil
 }
 
 func (s *SafeTransport) dialSafe(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -108,6 +155,51 @@ func (s *SafeTransport) dialSafe(ctx context.Context, network, addr string) (net
 }
 
 func (s *SafeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	host := strings.ToLower(req.URL.Hostname())
+	if _, useWARP := s.warpDomains.Load(host); useWARP {
+		if resp, err := s.roundTripOnce(req, true); err == nil {
+			if resp.Header != nil {
+				resp.Header.Set("X-AI-Go-WARP-Fallback", "cached-domain")
+			}
+			return resp, nil
+		}
+	}
+
+	resp, err := s.roundTripOnce(req, false)
+	if err != nil {
+		if errors.Is(err, ErrSSRFBlocked) {
+			return nil, err
+		}
+		if warpResp, warpErr := s.roundTripOnce(req, true); warpErr == nil {
+			if warpResp.Header != nil {
+				warpResp.Header.Set("X-AI-Go-WARP-Fallback", "error-recovery")
+			}
+			return warpResp, nil
+		}
+		return nil, err
+	}
+
+	// If WAF/Cloudflare/Datacenter IP block triggers (403, 429, 503, 999), automatically retry through local Cloudflare WARP tunnel
+	if resp.StatusCode == 403 || resp.StatusCode == 429 || resp.StatusCode == 503 || resp.StatusCode == 999 {
+		if warpResp, warpErr := s.roundTripOnce(req, true); warpErr == nil {
+			if warpResp.StatusCode < 400 || warpResp.StatusCode != resp.StatusCode {
+				_ = resp.Body.Close()
+				if warpResp.StatusCode < 400 {
+					s.warpDomains.Store(host, true)
+				}
+				if warpResp.Header != nil {
+					warpResp.Header.Set("X-AI-Go-WARP-Fallback", "status-healed")
+				}
+				return warpResp, nil
+			}
+			_ = warpResp.Body.Close()
+		}
+	}
+
+	return resp, nil
+}
+
+func (s *SafeTransport) roundTripOnce(req *http.Request, useWARP bool) (*http.Response, error) {
 	host := req.URL.Hostname()
 	port := req.URL.Port()
 	if port == "" {
@@ -119,7 +211,15 @@ func (s *SafeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	addr := net.JoinHostPort(host, port)
 
-	rawConn, err := s.dialSafe(req.Context(), "tcp4", addr)
+	var (
+		rawConn net.Conn
+		err     error
+	)
+	if useWARP {
+		rawConn, err = s.dialViaWARPProxy(req.Context(), addr)
+	} else {
+		rawConn, err = s.dialSafe(req.Context(), "tcp4", addr)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +262,15 @@ func (s *SafeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		// Auto-fallback for government/academic portals with ICP-Brasil or self-signed x509 chains
 		if strings.Contains(err.Error(), "x509:") {
 			_ = rawConn.Close()
-			rawConn2, dialErr := s.dialSafe(req.Context(), "tcp4", addr)
+			var (
+				rawConn2 net.Conn
+				dialErr  error
+			)
+			if useWARP {
+				rawConn2, dialErr = s.dialViaWARPProxy(req.Context(), addr)
+			} else {
+				rawConn2, dialErr = s.dialSafe(req.Context(), "tcp4", addr)
+			}
 			if dialErr == nil {
 				rawConn = rawConn2
 				uConfigInsecure := &utls.Config{
