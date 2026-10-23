@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -118,18 +119,38 @@ func (s *SafeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	addr := net.JoinHostPort(host, port)
 
-	rawConn, err := s.dialSafe(req.Context(), "tcp", addr)
+	rawConn, err := s.dialSafe(req.Context(), "tcp4", addr)
 	if err != nil {
 		return nil, err
 	}
 
+	// Active deadline & context watcher to prevent hanging connections
+	ctx := req.Context()
+	stopWatcher := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = rawConn.Close()
+		case <-stopWatcher:
+		}
+	}()
+
 	// Plain HTTP/1.1
 	if req.URL.Scheme == "http" {
 		if err := req.Write(rawConn); err != nil {
+			close(stopWatcher)
 			rawConn.Close()
 			return nil, err
 		}
-		return http.ReadResponse(bufio.NewReader(rawConn), req)
+		resp, err := http.ReadResponse(bufio.NewReader(rawConn), req)
+		if err != nil {
+			close(stopWatcher)
+			rawConn.Close()
+			return nil, err
+		}
+		// Wrap body to stop watcher on close
+		resp.Body = &closingBody{ReadCloser: resp.Body, conn: rawConn, stop: stopWatcher}
+		return resp, nil
 	}
 
 	// HTTPS with genuine Chrome uTLS and GREASE
@@ -138,6 +159,7 @@ func (s *SafeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	}
 	uConn := utls.UClient(rawConn, uConfig, utls.HelloChrome_120)
 	if err := uConn.HandshakeContext(req.Context()); err != nil {
+		close(stopWatcher)
 		rawConn.Close()
 		return nil, err
 	}
@@ -146,18 +168,48 @@ func (s *SafeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if uConn.ConnectionState().NegotiatedProtocol == "h2" {
 		h2Conn, err := s.tr2.NewClientConn(uConn)
 		if err != nil {
+			close(stopWatcher)
 			uConn.Close()
 			return nil, err
 		}
-		return h2Conn.RoundTrip(req)
+		resp, err := h2Conn.RoundTrip(req)
+		if err != nil {
+			close(stopWatcher)
+			return nil, err
+		}
+		close(stopWatcher)
+		return resp, nil
 	}
 
 	// Fallback HTTP/1.1 over uTLS
 	if err := req.Write(uConn); err != nil {
+		close(stopWatcher)
 		uConn.Close()
 		return nil, err
 	}
-	return http.ReadResponse(bufio.NewReader(uConn), req)
+	resp, err := http.ReadResponse(bufio.NewReader(uConn), req)
+	if err != nil {
+		close(stopWatcher)
+		uConn.Close()
+		return nil, err
+	}
+	resp.Body = &closingBody{ReadCloser: resp.Body, conn: uConn, stop: stopWatcher}
+	return resp, nil
+}
+
+type closingBody struct {
+	io.ReadCloser
+	conn net.Conn
+	stop chan struct{}
+	once sync.Once
+}
+
+func (c *closingBody) Close() error {
+	c.once.Do(func() {
+		close(c.stop)
+		_ = c.conn.Close()
+	})
+	return c.ReadCloser.Close()
 }
 
 // NewSafeTransport returns a SafeTransport implementing http.RoundTripper with DNS resolution verification against SSRF.
