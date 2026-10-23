@@ -97,6 +97,11 @@ func (s *SafeTransport) dialViaWARPProxy(ctx context.Context, hostPort string) (
 		}
 	}
 
+	// Preferred path: pure-Go in-process WARP tunnel (no external process)
+	if w := getEmbeddedWARP(); w != nil {
+		return w.dial(ctx, hostPort)
+	}
+
 	proxyAddr := getWARPProxyAddr()
 	proxyConn, err := s.dialer.DialContext(ctx, "tcp4", proxyAddr)
 	if err != nil {
