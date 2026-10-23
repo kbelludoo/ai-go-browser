@@ -214,9 +214,10 @@ func (e *Engine) searchWikipedia(ctx context.Context, query string) ([]ResultIte
 
 	var items []ResultItem
 	for _, it := range wiki.Query.Search {
+		wikiSlug := strings.ReplaceAll(it.Title, " ", "_")
 		items = append(items, ResultItem{
 			Title:   it.Title,
-			URL:     fmt.Sprintf("https://pt.wikipedia.org/wiki/%s", url.PathEscape(it.Title)),
+			URL:     fmt.Sprintf("https://pt.wikipedia.org/wiki/%s", url.PathEscape(wikiSlug)),
 			Snippet: cleanText(it.Snippet),
 			Source:  "Wikipedia",
 		})
@@ -252,13 +253,20 @@ func (e *Engine) searchGoogle(ctx context.Context, query string) ([]ResultItem, 
 	matches := reBlock.FindAllStringSubmatch(body, 5)
 
 	for _, m := range matches {
-		rawURL := m[1]
+		rawURL := html.UnescapeString(m[1])
 		snippet := cleanText(m[2])
-		decodedURL, _ := url.QueryUnescape(rawURL)
-		if idx := strings.Index(decodedURL, "uddg="); idx != -1 {
-			decodedURL = decodedURL[idx+5:]
-			if ampersand := strings.Index(decodedURL, "&"); ampersand != -1 {
-				decodedURL = decodedURL[:ampersand]
+		decodedURL := rawURL
+		if parsedWrapper, err := url.Parse(rawURL); err == nil {
+			if uddg := parsedWrapper.Query().Get("uddg"); uddg != "" {
+				decodedURL = uddg
+			}
+		} else if idx := strings.Index(rawURL, "uddg="); idx != -1 {
+			sub := rawURL[idx+5:]
+			if ampersand := strings.Index(sub, "&"); ampersand != -1 {
+				sub = sub[:ampersand]
+			}
+			if u, uErr := url.QueryUnescape(sub); uErr == nil {
+				decodedURL = u
 			}
 		}
 
