@@ -175,9 +175,10 @@ func (s *SafeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		resp, err := h2Conn.RoundTrip(req)
 		if err != nil {
 			close(stopWatcher)
+			uConn.Close()
 			return nil, err
 		}
-		close(stopWatcher)
+		resp.Body = &closingBody{ReadCloser: resp.Body, conn: uConn, stop: stopWatcher}
 		return resp, nil
 	}
 
