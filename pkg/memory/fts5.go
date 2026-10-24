@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"ai-go-browser/browser"
 	_ "github.com/glebarez/go-sqlite"
 )
 
@@ -67,6 +68,12 @@ func initSchema(db *sql.DB) error {
 		domain,
 		content,
 		tokenize = 'unicode61 remove_diacritics 2'
+	);
+
+	CREATE TABLE IF NOT EXISTS page_bytecodes (
+		url TEXT PRIMARY KEY,
+		bytecode BLOB NOT NULL,
+		updated_at INTEGER NOT NULL
 	);
 	`
 	_, err := db.Exec(schema)
@@ -135,7 +142,34 @@ func (s *Storage) IndexPage(rec PageRecord) error {
 
 	query := `INSERT INTO pages_fts (url, title, domain, content) VALUES (?, ?, ?, ?)`
 	_, err := s.db.Exec(query, rec.URL, rec.Title, rec.Domain, cleanContent)
-	return err
+	if err != nil {
+		return err
+	}
+
+	// Also compile and persist Micro-Bytecode VM for zero-token CPU queries
+	doc := browser.DocumentKnowledge{
+		URL:        rec.URL,
+		Title:      rec.Title,
+		StatusCode: rec.Status,
+		Content:    strings.Split(cleanContent, "\n"),
+	}
+	bytecode := browser.CompileToBytecode(doc)
+	_, _ = s.db.Exec(`INSERT INTO page_bytecodes (url, bytecode, updated_at) VALUES (?, ?, ?)
+		ON CONFLICT(url) DO UPDATE SET bytecode = excluded.bytecode, updated_at = excluded.updated_at`,
+		rec.URL, bytecode, time.Now().Unix())
+
+	return nil
+}
+
+// GetPageBytecode loads the compiled micro-bytecode for a URL and instantiates the query VM.
+func (s *Storage) GetPageBytecode(pageURL string) (*browser.BytecodeVM, error) {
+	var bin []byte
+	query := `SELECT bytecode FROM page_bytecodes WHERE url = ?`
+	err := s.db.QueryRow(query, pageURL).Scan(&bin)
+	if err != nil {
+		return nil, err
+	}
+	return browser.LoadBytecode(bin)
 }
 
 // SearchPages executes an FTS5 full-text search with BM25 ranking and snippet extraction.
