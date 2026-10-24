@@ -69,6 +69,12 @@ func isPrivateIP(ip net.IP) bool {
 	return false
 }
 
+// DomainMemory represents an optional persistent memory store for domain connection profiles.
+type DomainMemory interface {
+	GetDomainConnectionProfile(domain string) (requiresWARP bool, insecureTLS bool)
+	RecordDomainConnectionProfile(domain string, requiresWARP, insecureTLS bool, status int, diagnosis string)
+}
+
 // SafeTransport combines SSRF protection with genuine Chrome uTLS, HTTP/2 multiplexing, and automatic Cloudflare WARP tunnel fallback.
 type SafeTransport struct {
 	dialer               *net.Dialer
@@ -76,6 +82,13 @@ type SafeTransport struct {
 	tr2                  *http2.Transport
 	connPool             sync.Map
 	warpDomains          sync.Map // host -> bool (domains that require Cloudflare WARP to bypass datacenter IP blocks)
+	memory               DomainMemory
+}
+
+// WithMemory attaches a persistent domain memory store to the transport.
+func (s *SafeTransport) WithMemory(m DomainMemory) *SafeTransport {
+	s.memory = m
+	return s
 }
 
 func getWARPProxyAddr() string {
@@ -161,10 +174,23 @@ func (s *SafeTransport) dialSafe(ctx context.Context, network, addr string) (net
 
 func (s *SafeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	host := strings.ToLower(req.URL.Hostname())
-	if _, useWARP := s.warpDomains.Load(host); useWARP {
+	cleanDomain := strings.TrimPrefix(host, "www.")
+
+	useWARP := false
+	if _, ok := s.warpDomains.Load(host); ok {
+		useWARP = true
+	} else if s.memory != nil {
+		reqWARP, _ := s.memory.GetDomainConnectionProfile(cleanDomain)
+		if reqWARP {
+			useWARP = true
+			s.warpDomains.Store(host, true)
+		}
+	}
+
+	if useWARP {
 		if resp, err := s.roundTripOnce(req, true); err == nil {
 			if resp.Header != nil {
-				resp.Header.Set("X-AI-Go-WARP-Fallback", "cached-domain")
+				resp.Header.Set("X-AI-Go-WARP-Fallback", "learned-memory")
 			}
 			return resp, nil
 		}
@@ -179,6 +205,9 @@ func (s *SafeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 			if warpResp.Header != nil {
 				warpResp.Header.Set("X-AI-Go-WARP-Fallback", "error-recovery")
 			}
+			if s.memory != nil && warpResp.StatusCode < 400 {
+				s.memory.RecordDomainConnectionProfile(cleanDomain, true, false, warpResp.StatusCode, "Recovered via WARP on connection error")
+			}
 			return warpResp, nil
 		}
 		return nil, err
@@ -191,6 +220,9 @@ func (s *SafeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 				_ = resp.Body.Close()
 				if warpResp.StatusCode < 400 {
 					s.warpDomains.Store(host, true)
+					if s.memory != nil {
+						s.memory.RecordDomainConnectionProfile(cleanDomain, true, false, warpResp.StatusCode, fmt.Sprintf("Bypassed HTTP %d via WARP", resp.StatusCode))
+					}
 				}
 				if warpResp.Header != nil {
 					warpResp.Header.Set("X-AI-Go-WARP-Fallback", "status-healed")

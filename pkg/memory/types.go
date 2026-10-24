@@ -4,12 +4,16 @@ import (
 	"time"
 )
 
-// DomainPlaybook stores learned knowledge, successful selectors, and routes for a web domain.
+// DomainPlaybook stores learned knowledge, successful selectors, routes, and connection profiles for a web domain.
 type DomainPlaybook struct {
 	Domain          string            `json:"domain"`
 	FastPaths       map[string]string `json:"fast_paths"`       // e.g. "search": "https://domain.com/search?q={query}"
 	KnownSelectors  map[string]string `json:"known_selectors"`  // e.g. "search_input": "input[name='q']", "submit": "button[type='submit']"
 	DismissModals   []string          `json:"dismiss_modals"`   // Known cookie/popup dismiss selectors (e.g. "#accept-cookies")
+	RequiresWARP    bool              `json:"requires_warp"`    // Domain blocks datacenter IPs, requires Cloudflare WARP tunnel
+	InsecureTLS     bool              `json:"insecure_tls"`     // Domain uses broken x509 chain (ICP-Brasil/gov.br) needing TLS bypass
+	LastStatusCode  int               `json:"last_status_code"` // Last observed HTTP response status code
+	LastDiagnosis   string            `json:"last_diagnosis"`   // Self-healing diagnostic reason if failed
 	SuccessCount    int               `json:"success_count"`
 	FailureCount    int               `json:"failure_count"`
 	LastVisited     time.Time         `json:"last_visited"`

@@ -269,3 +269,45 @@ func (e *Engine) ExportHandoff(currentURL, title, goal string, steps []string, c
 func (e *Engine) ResumeHandoff(id string) (*HandoffSession, error) {
 	return e.storage.GetHandoff(id)
 }
+
+// RecordDomainConnectionProfile remembers whether a domain requires WARP tunnel or insecure TLS.
+func (e *Engine) RecordDomainConnectionProfile(domain string, requiresWARP, insecureTLS bool, status int, diagnosis string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	pb := e.getOrCreatePlaybookLocked(domain)
+	if requiresWARP {
+		pb.RequiresWARP = true
+	}
+	if insecureTLS {
+		pb.InsecureTLS = true
+	}
+	if status > 0 {
+		pb.LastStatusCode = status
+	}
+	if diagnosis != "" {
+		pb.LastDiagnosis = diagnosis
+	}
+	if status >= 200 && status < 400 {
+		pb.SuccessCount++
+	} else if status >= 400 {
+		pb.FailureCount++
+	}
+	pb.LastVisited = time.Now()
+	_ = e.storage.SavePlaybook(pb)
+}
+
+// GetDomainConnectionProfile retrieves learned connection settings for a domain.
+func (e *Engine) GetDomainConnectionProfile(domain string) (requiresWARP bool, insecureTLS bool) {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	domain = strings.TrimPrefix(strings.ToLower(domain), "www.")
+	if pb, ok := e.cache[domain]; ok && pb != nil {
+		return pb.RequiresWARP, pb.InsecureTLS
+	}
+	if pb, err := e.storage.GetPlaybook(domain); err == nil && pb != nil {
+		return pb.RequiresWARP, pb.InsecureTLS
+	}
+	return false, false
+}
