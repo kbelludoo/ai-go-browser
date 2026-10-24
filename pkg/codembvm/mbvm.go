@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/zlib"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -11,6 +12,7 @@ import (
 	"go/token"
 	"io"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -281,4 +283,127 @@ func LoadCodebaseMBVM(compressed []byte) (*CodebaseMBVM, error) {
 	}
 
 	return &CodebaseMBVM{StringPool: pool}, nil
+}
+
+type mcpProp struct {
+	Type        string   `json:"type"`
+	Description string   `json:"description"`
+	Enum        []string `json:"enum,omitempty"`
+	Items       *struct {
+		Type string `json:"type"`
+	} `json:"items,omitempty"`
+}
+
+type mcpParams struct {
+	Properties map[string]mcpProp `json:"properties"`
+	Required   []string           `json:"required"`
+}
+
+type mcpSchemaJSON struct {
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	Parameters  *mcpParams `json:"parameters,omitempty"`
+	InputSchema *mcpParams `json:"inputSchema,omitempty"`
+}
+
+// CompileMCPSchemas compiles verbose JSON MCP tool schemas into ultra-compact Micro-Bytecode VM format.
+func CompileMCPSchemas(mcpDir string) ([]byte, string, int, error) {
+	entries, err := os.ReadDir(mcpDir)
+	if err != nil {
+		return nil, "", 0, err
+	}
+
+	strMap := make(map[string]uint16)
+	var strPool []string
+	getStringID := func(s string) uint16 {
+		if id, ok := strMap[s]; ok {
+			return id
+		}
+		id := uint16(len(strPool))
+		strMap[s] = id
+		strPool = append(strPool, s)
+		return id
+	}
+
+	var rawBytes int
+	var code bytes.Buffer
+	var proj strings.Builder
+	proj.WriteString("=== MCP TOOLS MB-VM SCHEMA ===\n")
+
+	toolsCount := 0
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		p := filepath.Join(mcpDir, e.Name())
+		data, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		rawBytes += len(data)
+
+		var schema mcpSchemaJSON
+		if err := json.Unmarshal(data, &schema); err != nil || schema.Name == "" {
+			continue
+		}
+
+		params := schema.Parameters
+		if params == nil {
+			params = schema.InputSchema
+		}
+
+		toolsCount++
+		code.WriteByte(0x30) // OpTool
+		_ = binary.Write(&code, binary.LittleEndian, getStringID(schema.Name))
+		_ = binary.Write(&code, binary.LittleEndian, getStringID(schema.Description))
+
+		reqSet := make(map[string]bool)
+		var paramsProj []string
+		if params != nil {
+			for _, r := range params.Required {
+				reqSet[r] = true
+			}
+
+			for paramName, prop := range params.Properties {
+				pType := prop.Type
+				if len(prop.Enum) > 0 {
+					pType = strings.Join(prop.Enum, "|")
+				} else if pType == "array" && prop.Items != nil && prop.Items.Type != "" {
+					pType = prop.Items.Type + "[]"
+				}
+				optMark := "?"
+				if reqSet[paramName] {
+					optMark = ""
+				}
+				paramsProj = append(paramsProj, fmt.Sprintf("%s%s: %s", paramName, optMark, pType))
+
+				code.WriteByte(0x31) // OpParam
+				_ = binary.Write(&code, binary.LittleEndian, getStringID(paramName))
+				_ = binary.Write(&code, binary.LittleEndian, getStringID(pType))
+			}
+		}
+
+		// Concise 1-line tool projection for AI context
+		shortDesc := schema.Description
+		if len(shortDesc) > 80 {
+			shortDesc = shortDesc[:80] + "..."
+		}
+		proj.WriteString(fmt.Sprintf("tool %s(%s) -> %s\n", schema.Name, strings.Join(paramsProj, ", "), shortDesc))
+	}
+
+	code.WriteByte(OpEnd)
+
+	// Serialize string pool + bytecode with zlib
+	var out bytes.Buffer
+	zw := zlib.NewWriter(&out)
+	_ = binary.Write(zw, binary.LittleEndian, uint32(len(strPool)))
+	for _, s := range strPool {
+		b := []byte(s)
+		_ = binary.Write(zw, binary.LittleEndian, uint16(len(b)))
+		zw.Write(b)
+	}
+	zw.Write(code.Bytes())
+	zw.Close()
+
+	return out.Bytes(), proj.String(), rawBytes, nil
 }
