@@ -4,9 +4,10 @@ import "core:testing"
 
 @(test)
 test_fetch_ip_policy :: proc(t: ^testing.T) {
-	for ip in []string{"127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.10.1",
+	bad_ips := []string{"127.0.0.1", "10.1.2.3", "172.16.0.1", "192.168.10.1",
 		"169.254.169.254", "100.64.1.1", "0.0.0.0", "8.8.8.8.x",
-		"::1", "::ffff:127.0.0.1", "203.0.113.10"} {
+		"::1", "::ffff:127.0.0.1", "203.0.113.10"}
+	for ip in bad_ips {
 		testing.expectf(t, !fetch_is_public_ipv4(ip), "must reject %q", ip)
 	}
 	testing.expect(t, fetch_is_public_ipv4("8.8.8.8"))
