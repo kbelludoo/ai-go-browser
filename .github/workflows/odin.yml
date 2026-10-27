@@ -76,3 +76,14 @@ jobs:
           grep -F "redirect rejected" /tmp/odin-bad-target.out
           ./ai-odin-browser open http://127.0.0.1:18766/start >/tmp/odin-private-denied.out
           grep -F "Erro HTTP:" /tmp/odin-private-denied.out
+
+
+      - name: Persistent JSONL agent smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 odin/fixtures/session_server.py >/tmp/odin-agent-server.log 2>&1 &
+          server=$!
+          trap 'kill "$server" || true' EXIT
+          sleep 1
+          python3 odin/fixtures/agent_smoke.py
