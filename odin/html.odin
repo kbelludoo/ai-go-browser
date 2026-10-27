@@ -2,12 +2,19 @@ package main
 
 import "core:strings"
 import "core:encoding/entity"
+import "core:encoding/json"
 
 // This is a bounded static HTML extraction layer, NOT a fully conforming HTML5 DOM.
 // It deliberately does not evaluate scripts, perform layout or process CSS selectors.
 HTML_MAX_BYTES :: 2*1024*1024
 HTML_MAX_TAGS  :: 50000
 HTML_MAX_ITEMS :: 2048
+
+Hydration_State :: struct {
+	json_ld: [dynamic]string,
+	next_data: string,
+	nuxt_data: string,
+}
 
 Parsed_Form :: struct {
 	method: string,
@@ -22,6 +29,7 @@ Parsed_Page :: struct {
 	inputs:   [dynamic]Page_Input,
 	buttons:  [dynamic]Page_Button,
 	forms:    [dynamic]Parsed_Form,
+	hydration: Hydration_State,
 	tags_read: int,
 	truncated: bool,
 }
@@ -251,6 +259,9 @@ parse_html :: proc(source: string, page_url: string) -> Parsed_Page {
 	active: string = ""
 	active_href := ""
 	hidden := ""
+	script_kind := ""
+	script_raw := strings.builder_make()
+	defer strings.builder_destroy(&script_raw)
 	in_head := false
 	active_form := -1
 
@@ -260,7 +271,11 @@ parse_html :: proc(source: string, page_url: string) -> Parsed_Page {
 			j := strings.index(html[i:], "<")
 			if j < 0 {j = len(html)-i}
 			chunk := html_decode(html[i:i+j])
-			if hidden == "" {
+			if hidden == "script" && script_kind != "" {
+				if len(script_raw.buf)+j <= 256*1024 {
+					strings.write_string(&script_raw, html[i:i+j])
+				}
+			} else if hidden == "" {
 				if active != "" {
 					strings.write_string(&captured, chunk)
 				}
@@ -297,13 +312,42 @@ parse_html :: proc(source: string, page_url: string) -> Parsed_Page {
 		result.tags_read += 1
 		if tag.name == "" {continue}
 		if hidden != "" {
-			if tag.closing && tag.name == hidden {hidden = ""}
+			if tag.closing && tag.name == hidden {
+				if hidden == "script" && script_kind != "" {
+					value := strings.trim_space(strings.to_string(script_raw))
+					if value != "" && json.is_valid(transmute([]byte)value) {
+						switch script_kind {
+						case "ld":
+							if len(result.hydration.json_ld) < 64 {
+								append(&result.hydration.json_ld, strings.clone(value))
+							}
+						case "next":
+							result.hydration.next_data = strings.clone(value)
+						case "nuxt":
+							result.hydration.nuxt_data = strings.clone(value)
+						}
+					}
+				}
+				hidden = ""
+				script_kind = ""
+			}
 			continue
 		}
 		if !tag.closing {
 			switch tag.name {
 			case "script", "style", "noscript", "template", "svg":
 				hidden = tag.name
+				if tag.name == "script" {
+					script_kind = ""
+					strings.builder_reset(&script_raw)
+					if ascii_lower(html_attr(tag, "type")) == "application/ld+json" {
+						script_kind = "ld"
+					} else if html_attr(tag, "id") == "__NEXT_DATA__" {
+						script_kind = "next"
+					} else if html_attr(tag, "id") == "__NUXT_DATA__" {
+						script_kind = "nuxt"
+					}
+				}
 				continue
 			case "head":
 				in_head = true
