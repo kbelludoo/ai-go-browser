@@ -124,7 +124,7 @@ query_static :: proc(html: string, url: string, selector: string) -> ([]Query_El
 		if src[i]!='<' {
 			k := strings.index(src[i:], "<")
 			if k<0 {k=len(src)-i}
-			if k>0 {
+			if k>0 && (len(stack)==0 || !stack[len(stack)-1].hidden) {
 				for frame in stack {
 					if frame.result_index >= 0 {
 						idx := frame.result_index
