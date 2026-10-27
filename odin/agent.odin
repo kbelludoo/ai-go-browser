@@ -44,7 +44,7 @@ agent_free_saved :: proc(saved: ^Fetch_Result) {
 
 agent_emit :: proc(ok: bool, message: string, saved: ^Fetch_Result) {
 	reply := Agent_Reply{ok=ok, error=message}
-	if ok && saved.effective_url != "" {
+	if ok && saved != nil && saved.effective_url != "" {
 		p := parse_html(saved.body, saved.effective_url)
 		reply.page = page_output(p, saved.status)
 	}
