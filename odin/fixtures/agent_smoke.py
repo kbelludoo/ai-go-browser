@@ -27,6 +27,14 @@ def main():
         start = send({"cmd": "open", "url": base + "/start"})
         assert start["ok"] and start["page"]["title"] == "Session established", start
 
+        selector = send({"cmd": "query", "selector": "a"})
+        assert selector["ok"] and len(selector["matches"]) == 1, selector
+        assert selector["matches"][0]["href"].endswith("/next"), selector
+        by_attr = send({"cmd": "query", "selector": "input[name=q]"})
+        assert by_attr["ok"] and len(by_attr["matches"]) == 1, by_attr
+        bad_selector = send({"cmd": "query", "selector": "a:hover"})
+        assert not bad_selector["ok"], bad_selector
+
         linked = send({"cmd": "follow", "ref": "l1"})
         assert linked["ok"] and linked["page"]["title"] == "Cookie kept", linked
 
