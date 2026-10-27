@@ -19,6 +19,7 @@ print_usage :: proc() {
 	fmt.println("  ai-odin-browser submit https://example.com f1 q=odin")
 	fmt.println("  ai-odin-browser hydrate https://example.com")
 	fmt.println("  ai-odin-browser export https://example.com")
+	fmt.println("  A sessão HTTP preserva cookies durante follow/submit e redirecionamentos.")
 	fmt.println("  Adicione --allow-private no fim para testar um servidor local.")
 }
 
@@ -149,7 +150,13 @@ main :: proc() {
 		return
 	}
 	target := os.args[2]
-	first := fetch_get(target, allow_private)
+	session: Fetch_Session
+	if !fetch_session_init(&session, allow_private) {
+		fmt.println("Erro: não foi possível criar a sessão HTTP")
+		return
+	}
+	defer fetch_session_close(&session)
+	first := fetch_session_get(&session, target)
 	defer delete(first.body)
 	defer delete(first.effective_url)
 	if first.error != "" {
@@ -186,7 +193,7 @@ main :: proc() {
 			return
 		}
 		defer delete(next_url)
-		next := fetch_get(next_url, allow_private)
+		next := fetch_session_get(&session, next_url)
 		defer delete(next.body)
 		defer delete(next.effective_url)
 		if next.error != "" {
@@ -211,7 +218,7 @@ main :: proc() {
 		return
 	}
 	defer delete(next_url)
-	next := fetch_get(next_url, allow_private)
+	next := fetch_session_get(&session, next_url)
 	defer delete(next.body)
 	defer delete(next.effective_url)
 	if next.error != "" {
