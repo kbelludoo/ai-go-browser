@@ -18,6 +18,7 @@ print_usage :: proc() {
 	fmt.println("  ai-odin-browser follow https://example.com l1")
 	fmt.println("  ai-odin-browser submit https://example.com f1 q=odin")
 	fmt.println("  ai-odin-browser hydrate https://example.com")
+	fmt.println("  ai-odin-browser export https://example.com")
 	fmt.println("  Adicione --allow-private no fim para testar um servidor local.")
 }
 
@@ -133,7 +134,7 @@ main :: proc() {
 		}
 		return
 	}
-	if operation != "open" && operation != "follow" && operation != "submit" && operation != "hydrate" {
+	if operation != "open" && operation != "follow" && operation != "submit" && operation != "hydrate" && operation != "export" {
 		print_usage()
 		return
 	}
@@ -141,7 +142,7 @@ main :: proc() {
 	for arg in os.args[3:] {
 		if arg == "--allow-private" {allow_private = true}
 	}
-	if (operation == "open" || operation == "hydrate") && len(os.args) > 4 ||
+	if (operation == "open" || operation == "hydrate" || operation == "export") && len(os.args) > 4 ||
 		operation == "follow" && (len(os.args) < 4 || len(os.args) > 5) ||
 		operation == "submit" && len(os.args) < 4 {
 		print_usage()
@@ -161,6 +162,10 @@ main :: proc() {
 	}
 	if operation == "hydrate" {
 		print_hydration(first)
+		return
+	}
+	if operation == "export" {
+		export_page_json(first)
 		return
 	}
 	if operation == "submit" {
