@@ -4,6 +4,7 @@
 package main
 
 import (
+ "bufio"
  "encoding/json"
  "fmt"
  "os"
@@ -30,7 +31,50 @@ func project(p browser.Page) Projection {
  for _, l := range p.Links { result.Links = append(result.Links, Link{l.Label,l.URL}) }
  return result
 }
+// Live baseline uses the repository's real Browser.Execute on a localhost
+// HTTP server; the sandboxed Go browser is not replaced with net/http code.
+func agentMode() {
+ b:=browser.New([]string{"127.0.0.1"},false)
+ b.Engine="http"
+ b.NativeOnly=true
+ b.MaxText=200000
+ b.CompactSnapshots=true
+ scanner:=bufio.NewScanner(os.Stdin)
+ scanner.Buffer(make([]byte,65536),1048576)
+ encoder:=json.NewEncoder(os.Stdout)
+ for scanner.Scan() {
+  var req struct {
+   Cmd string `json:"cmd"`
+   URL string `json:"url"`
+  }
+  if err:=json.Unmarshal(scanner.Bytes(),&req);err!=nil {
+   _=encoder.Encode(map[string]interface{}{"ok":false,"error":"invalid JSON"})
+   continue
+  }
+  if req.Cmd=="quit" {
+   _=encoder.Encode(map[string]interface{}{"ok":true})
+   return
+  }
+  if req.Cmd!="open" && req.Cmd!="snapshot" {
+   _=encoder.Encode(map[string]interface{}{"ok":false,"error":"unsupported Go benchmark command"})
+   continue
+  }
+  r:=b.Execute(browser.Command{Cmd:req.Cmd,URL:req.URL})
+  if !r.OK {
+   _=encoder.Encode(map[string]interface{}{"ok":false,"error":r.Error})
+   continue
+  }
+  p:=r.Page
+  if p==nil {p=b.Current}
+  if p==nil {
+   _=encoder.Encode(map[string]interface{}{"ok":false,"error":"no parsed page"})
+   continue
+  }
+  _=encoder.Encode(map[string]interface{}{"ok":true,"page":project(*p)})
+ }
+}
 func main() {
+ if len(os.Args)==2 && os.Args[1]=="agent" {agentMode(); return}
  if len(os.Args) < 4 {
   fmt.Fprintln(os.Stderr, "usage: go-reference parse-file|bench-file path url [iterations]")
   os.Exit(2)
