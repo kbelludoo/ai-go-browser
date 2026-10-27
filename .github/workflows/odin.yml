@@ -41,3 +41,6 @@ jobs:
           ./ai-odin-browser follow http://127.0.0.1:18765/index.html l1 --allow-private >/tmp/odin-follow.out
           grep -F "Artigo Odin" /tmp/odin-follow.out
           grep -F "Segundo documento" /tmp/odin-follow.out
+          ./ai-odin-browser submit http://127.0.0.1:18765/index.html f1 q=Odin --allow-private >/tmp/odin-submit.out
+          grep -F "Resultado GET em Odin" /tmp/odin-submit.out
+          grep -F "Pesquisa recebida" /tmp/odin-submit.out
