@@ -44,3 +44,7 @@ jobs:
           ./ai-odin-browser submit http://127.0.0.1:18765/index.html f1 q=Odin --allow-private >/tmp/odin-submit.out
           grep -F "Resultado GET em Odin" /tmp/odin-submit.out
           grep -F "Pesquisa recebida" /tmp/odin-submit.out
+          ./ai-odin-browser hydrate http://127.0.0.1:18765/modern.html --allow-private >/tmp/odin-hydrate.out
+          grep -F '"@type":"Product"' /tmp/odin-hydrate.out
+          grep -F '"results":8' /tmp/odin-hydrate.out
+          grep -F '"ok":true' /tmp/odin-hydrate.out
