@@ -49,6 +49,35 @@ def main():
         still = send({"cmd": "snapshot"})
         assert still["ok"] and still["page"]["title"] == "Cookie form works"
 
+        # Repeated snapshots and navigation must release transient arena data.
+        # This is a regression ceiling, not a comparable memory benchmark.
+        def rss_kib():
+            try:
+                with open(f"/proc/{p.pid}/status", encoding="utf-8") as fh:
+                    for line in fh:
+                        if line.startswith("VmRSS:"):
+                            return int(line.split()[1])
+            except OSError:
+                return 0
+            return 0
+
+        baseline = rss_kib()
+        peak = baseline
+        for _ in range(160):
+            snap = send({"cmd": "snapshot"})
+            assert snap["ok"] and snap["page"]["title"] == "Cookie form works"
+            peak = max(peak, rss_kib())
+        for _ in range(20):
+            page = send({"cmd": "open", "url": base + "/landing"})
+            assert page["ok"]
+            link = send({"cmd": "follow", "ref": "l1"})
+            assert link["ok"] and link["page"]["title"] == "Cookie kept"
+            peak = max(peak, rss_kib())
+        if baseline:
+            delta = peak - baseline
+            print(f"Agent RSS baseline={baseline} KiB peak={peak} KiB delta={delta} KiB")
+            assert delta < 32768, f"RSS growth above 32 MiB across repeated operations: {delta}"
+
         goodbye = send({"cmd": "quit"})
         assert goodbye["ok"]
         p.stdin.close()
