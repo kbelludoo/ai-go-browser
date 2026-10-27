@@ -1,0 +1,24 @@
+name: Odin port validation
+on:
+  push:
+    paths:
+      - 'odin/**'
+      - '.github/workflows/odin.yml'
+  pull_request:
+    paths:
+      - 'odin/**'
+      - '.github/workflows/odin.yml'
+jobs:
+  compile-and-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: laytan/setup-odin@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Unit tests
+        run: odin test odin
+      - name: Build CLI
+        run: odin build odin -out:ai-odin-browser
