@@ -19,7 +19,7 @@ Static_Projection :: struct {
 }
 
 benchmark_file :: proc(action, filepath, url: string, repetitions: int = 1) {
-	content, err := os.read_entire_file(filepath)
+	content, err := os.read_entire_file(filepath, context.allocator)
 	if err != nil {
 		fmt.printf("Cannot read benchmark file: %v\n", err)
 		return
