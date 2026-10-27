@@ -20,6 +20,8 @@ print_usage :: proc() {
 	fmt.println("  ai-odin-browser hydrate https://example.com")
 	fmt.println("  ai-odin-browser export https://example.com")
 	fmt.println("  ai-odin-browser agent [--allow-private]  # JSONL via stdin/stdout")
+	fmt.println("  ai-odin-browser parse-file pagina.html https://example.com/")
+	fmt.println("  ai-odin-browser bench-file pagina.html https://example.com/ 1200")
 	fmt.println("  A sessão HTTP preserva cookies durante follow/submit e redirecionamentos.")
 	fmt.println("  Adicione --allow-private no fim para testar um servidor local.")
 }
@@ -113,6 +115,7 @@ get_form_target :: proc(response: Fetch_Result, index: int, overrides: []string)
 }
 
 main :: proc() {
+	if benchmark_cli(os.args) {return}
 	if len(os.args) >= 2 && os.args[1] == "agent" {
 		allow_private := false
 		for arg in os.args[2:] {
