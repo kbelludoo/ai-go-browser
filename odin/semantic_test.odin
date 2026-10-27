@@ -12,7 +12,7 @@ test_empty_and_basic_tokens :: proc(t: ^testing.T) {
 
 @(test)
 test_markdown_to_cso :: proc(t: ^testing.T) {
-	input := "# Guia\n\n**Odin** e [documentação](https://odin-lang.org/docs/overview/?utm_source=x)\n`codigo`
+	input := "# Guia\n\n**Odin** e [documentação](https://odin-lang.org/docs/overview/?utm_source=x)\n`codigo`"
 	want := "H1: Guia\nOdin e documentação -> /docs/overview/\ncodigo"
 	got := markdown_to_cso(input)
 	testing.expectf(t, got == want, "CSO divergente: obtido %q, esperado %q", got, want)
