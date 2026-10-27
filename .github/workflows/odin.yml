@@ -48,3 +48,5 @@ jobs:
           grep -F '"@type":"Product"' /tmp/odin-hydrate.out
           grep -F '"results":8' /tmp/odin-hydrate.out
           grep -F '"ok":true' /tmp/odin-hydrate.out
+          ./ai-odin-browser export http://127.0.0.1:18765/index.html --allow-private >/tmp/odin-export.json
+          python3 -c 'import json; p=json.load(open("/tmp/odin-export.json")); assert p["status"] == 200; assert p["title"] == "Odin Demo & Smoke"; assert p["links"][0]["label"] == "Ler artigo de teste"'
