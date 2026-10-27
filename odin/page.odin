@@ -17,6 +17,9 @@ Page_Link :: struct {
 Page_Input :: struct {
 	type: string,
 	name: string,
+	value: string,
+	disabled: bool,
+	checked: bool,
 }
 
 Page_Button :: struct {
