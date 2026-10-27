@@ -105,7 +105,7 @@ fetch_validate_url :: proc(target: string) -> bool {
 }
 
 fetch_get :: proc(target: string, allow_private: bool = false) -> Fetch_Result {
-	out := Fetch_Result{effective_url=target}
+	out := Fetch_Result{effective_url=strings.clone(target)}
 	if !fetch_validate_url(target) {
 		out.error = "URL must be http/https without credentials, whitespace or controls"
 		return out
@@ -122,6 +122,7 @@ fetch_get :: proc(target: string, allow_private: bool = false) -> Fetch_Result {
 	policy := Fetch_Policy{allow_private=allow_private}
 
 	url_c := strings.clone_to_cstring(target)
+	defer delete(url_c)
 	// libcurl copies CURLOPT_URL internally.
 	curl.easy_setopt(handle, .URL, url_c)
 	curl.easy_setopt(handle, .USERAGENT, cstring("ai-odin-browser/0.1 (semantic browser)"))
@@ -155,6 +156,7 @@ fetch_get :: proc(target: string, allow_private: bool = false) -> Fetch_Result {
 	out.status = int(status)
 	effective: cstring
 	if curl.easy_getinfo(handle, .EFFECTIVE_URL, &effective) == .E_OK && effective != nil {
+		delete(out.effective_url)
 		out.effective_url = strings.clone(string(effective))
 	}
 	out.body = strings.clone(string(received.bytes[:]))
