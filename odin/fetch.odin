@@ -4,7 +4,6 @@ import "base:runtime"
 import "core:c/libc"
 import "core:strconv"
 import "core:strings"
-import "vendor:curl"
 
 // Native libcurl HTTP/HTTPS transport, designed to replace Go's fetch layer
 // incrementally. GET only; redirects are intentionally NOT followed because
@@ -109,66 +108,17 @@ fetch_validate_url :: proc(target: string) -> bool {
 	return true
 }
 
+// All callers now use the same cookie-capable, fail-closed transport policy.
+// This helper preserves the former one-shot API while avoiding two diverging
+// sets of curl options or separate SSRF implementations.
 fetch_get :: proc(target: string, allow_private: bool = false) -> Fetch_Result {
-	out := Fetch_Result{effective_url=strings.clone(target)}
-	if !fetch_validate_url(target) {
-		out.error = "URL must be http/https without credentials, whitespace or controls"
-		return out
+	session: Fetch_Session
+	if !fetch_session_init(&session, allow_private) {
+		return Fetch_Result {
+			effective_url=strings.clone(target),
+			error="secure libcurl initialization failed",
+		}
 	}
-	curl.global_init(curl.GLOBAL_ALL)
-	handle := curl.easy_init()
-	if handle == nil {
-		out.error = "libcurl initialization failed"
-		return out
-	}
-	defer curl.easy_cleanup(handle)
-	received := Fetch_Buffer{}
-	defer delete(received.bytes)
-	policy := Fetch_Policy{allow_private=allow_private}
-
-	url_c := strings.clone_to_cstring(target)
-	defer delete(url_c)
-	// libcurl copies CURLOPT_URL internally.
-	curl.easy_setopt(handle, .URL, url_c)
-	curl.easy_setopt(handle, .USERAGENT, cstring("ai-odin-browser/0.1 (semantic browser)"))
-	curl.easy_setopt(handle, .ACCEPT_ENCODING, cstring(""))
-	curl.easy_setopt(handle, .PROTOCOLS_STR, cstring("http,https"))
-	curl.easy_setopt(handle, .REDIR_PROTOCOLS_STR, cstring("http,https"))
-	curl.easy_setopt(handle, .FOLLOWLOCATION, libc.long(0))
-	curl.easy_setopt(handle, .CONNECTTIMEOUT_MS, libc.long(4000))
-	curl.easy_setopt(handle, .TIMEOUT_MS, libc.long(12000))
-	curl.easy_setopt(handle, .NOSIGNAL, libc.long(1))
-	curl.easy_setopt(handle, .SSL_VERIFYPEER, libc.long(1))
-	curl.easy_setopt(handle, .SSL_VERIFYHOST, libc.long(2))
-	curl.easy_setopt(handle, .NOPROXY, cstring("*"))
-	curl.easy_setopt(handle, .PROXY, cstring(""))
-	curl.easy_setopt(handle, .WRITEFUNCTION, fetch_write)
-	curl.easy_setopt(handle, .WRITEDATA, &received)
-	curl.easy_setopt(handle, .PREREQFUNCTION, fetch_prereq)
-	curl.easy_setopt(handle, .PREREQDATA, &policy)
-	if !allow_private {
-		// Restricted mode currently classifies IPv4 only; avoid IPv6
-		// handshake failure on dual-stack hosts, and deny private IPv4.
-		curl.easy_setopt(handle, .IPRESOLVE, libc.long(curl.IPRESOLVE_V4))
-	}
-
-	err := curl.easy_perform(handle)
-	if received.exceeded {
-		out.error = "response exceeds 2 MiB limit"
-		return out
-	}
-	if err != .E_OK {
-		out.error = string(curl.easy_strerror(err))
-		return out
-	}
-	status: libc.long
-	curl.easy_getinfo(handle, .RESPONSE_CODE, &status)
-	out.status = int(status)
-	effective: cstring
-	if curl.easy_getinfo(handle, .EFFECTIVE_URL, &effective) == .E_OK && effective != nil {
-		delete(out.effective_url)
-		out.effective_url = strings.clone(string(effective))
-	}
-	out.body = strings.clone(string(received.bytes[:]))
-	return out
+	defer fetch_session_close(&session)
+	return fetch_session_get(&session, target)
 }
