@@ -64,8 +64,8 @@ func agentMode() {
    _=encoder.Encode(map[string]interface{}{"ok":false,"error":r.Error})
    continue
   }
-  p:=r.Page
-  if p==nil {p=b.Current}
+  p:=b.Current
+  if p==nil {p=r.Page}
   if p==nil {
    _=encoder.Encode(map[string]interface{}{"ok":false,"error":"no parsed page"})
    continue
