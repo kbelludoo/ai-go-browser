@@ -12,6 +12,7 @@ HTML_MAX_ITEMS :: 2048
 Parsed_Form :: struct {
 	method: string,
 	action: string,
+	fields: [dynamic]Page_Input,
 }
 
 Parsed_Page :: struct {
@@ -125,6 +126,37 @@ html_attr :: proc(t: HTML_Tag, key: string) -> string {
 	return ""
 }
 
+
+html_tag_has_attr :: proc(t: HTML_Tag, target: string) -> bool {
+	raw := t.attrs
+	i := 0
+	for i < len(raw) {
+		for i < len(raw) && (html_space(raw[i]) || raw[i] == '/') {i += 1}
+		start := i
+		for i < len(raw) && html_name(raw[i]) {i += 1}
+		if start == i {
+			if i < len(raw) {i += 1}
+			continue
+		}
+		name := raw[start:i]
+		if ascii_lower(name) == target {return true}
+		for i < len(raw) && html_space(raw[i]) {i += 1}
+		if i < len(raw) && raw[i] == '=' {
+			i += 1
+			for i < len(raw) && html_space(raw[i]) {i += 1}
+			if i < len(raw) && (raw[i] == '"' || raw[i] == '\'') {
+				q := raw[i]
+				i += 1
+				for i < len(raw) && raw[i] != q {i += 1}
+				if i < len(raw) {i += 1}
+			} else {
+				for i < len(raw) && !html_space(raw[i]) {i += 1}
+			}
+		}
+	}
+	return false
+}
+
 html_origin :: proc(base: string) -> string {
 	i := strings.index(base, "://")
 	if i < 0 {
@@ -220,6 +252,7 @@ parse_html :: proc(source: string, page_url: string) -> Parsed_Page {
 	active_href := ""
 	hidden := ""
 	in_head := false
+	active_form := -1
 
 	i := 0
 	for i < len(html) && result.tags_read < HTML_MAX_TAGS {
@@ -280,18 +313,28 @@ parse_html :: proc(source: string, page_url: string) -> Parsed_Page {
 				}
 			case "input":
 				if len(result.inputs) < HTML_MAX_ITEMS {
-					field_type := html_attr(tag, "type")
+					field_type := ascii_lower(html_attr(tag, "type"))
 					if field_type == "" {field_type = "text"}
-					append(&result.inputs, Page_Input {type=field_type, name=html_attr(tag, "name")})
+					field := Page_Input {
+						type=field_type,
+						name=html_attr(tag, "name"),
+						value=html_attr(tag, "value"),
+						disabled=html_tag_has_attr(tag, "disabled"),
+						checked=html_tag_has_attr(tag, "checked"),
+					}
+					append(&result.inputs, field)
+					if active_form >= 0 && len(result.forms[active_form].fields) < HTML_MAX_ITEMS {
+						append(&result.forms[active_form].fields, field)
+					}
 				}
 			case "form":
 				if len(result.forms) < HTML_MAX_ITEMS {
 					method := ascii_lower(html_attr(tag, "method"))
 					if method == "" {method = "get"}
-					append(&result.forms, Parsed_Form {
-						method=method,
-						action=html_resolve(page_url, html_attr(tag, "action")),
-					})
+					action := html_resolve(page_url, html_attr(tag, "action"))
+					if action == "" {action = page_url}
+					append(&result.forms, Parsed_Form {method=method, action=action})
+					active_form = len(result.forms)-1
 				}
 			}
 			if active == "" {
@@ -306,6 +349,7 @@ parse_html :: proc(source: string, page_url: string) -> Parsed_Page {
 			if tag.name == "br" {strings.write_byte(&body, '\n')}
 		} else {
 			if tag.name == "head" {in_head = false}
+			if tag.name == "form" {active_form = -1}
 			if is_block(tag.name) && !in_head {
 				strings.write_byte(&body, '\n')
 			}
