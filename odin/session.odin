@@ -28,6 +28,7 @@ fetch_headers_callback :: proc "c" (
 	context = runtime.default_context()
 	h := (^Fetch_Headers)(userdata)
 	if h == nil || item_size <= 0 || count <= 0 {return 0}
+	if item_size > 8192/count {return item_size*count}
 	n := item_size*count
 	if n > 8192 {return n} // Ignore overlong header lines, not the transfer.
 	line := incoming[:n]
@@ -59,34 +60,41 @@ fetch_headers_callback :: proc "c" (
 }
 
 fetch_session_init :: proc(s: ^Fetch_Session, allow_private: bool = false) -> bool {
-	curl.global_init(curl.GLOBAL_ALL)
+	if curl.global_init(curl.GLOBAL_ALL) != .E_OK {return false}
 	s.handle = curl.easy_init()
 	if s.handle == nil {return false}
 	s.policy.allow_private = allow_private
 	h := s.handle
-
-	curl.easy_setopt(h, .USERAGENT, cstring("ai-odin-browser/0.2 (semantic browser)"))
-	curl.easy_setopt(h, .ACCEPT_ENCODING, cstring(""))
-	curl.easy_setopt(h, .PROTOCOLS_STR, cstring("http,https"))
-	curl.easy_setopt(h, .REDIR_PROTOCOLS_STR, cstring("http,https"))
-	curl.easy_setopt(h, .FOLLOWLOCATION, libc.long(0))
-	curl.easy_setopt(h, .CONNECTTIMEOUT_MS, libc.long(4000))
-	curl.easy_setopt(h, .TIMEOUT_MS, libc.long(12000))
-	curl.easy_setopt(h, .NOSIGNAL, libc.long(1))
-	curl.easy_setopt(h, .SSL_VERIFYPEER, libc.long(1))
-	curl.easy_setopt(h, .SSL_VERIFYHOST, libc.long(2))
-	curl.easy_setopt(h, .NOPROXY, cstring("*"))
-	curl.easy_setopt(h, .PROXY, cstring(""))
-	curl.easy_setopt(h, .HTTPGET, libc.long(1))
-	curl.easy_setopt(h, .WRITEFUNCTION, fetch_write)
-	curl.easy_setopt(h, .HEADERFUNCTION, fetch_headers_callback)
-	curl.easy_setopt(h, .PREREQFUNCTION, fetch_prereq)
-	curl.easy_setopt(h, .PREREQDATA, &s.policy)
-	// Supplying an empty COOKIEFILE enables libcurl's in-memory cookie engine.
-	curl.easy_setopt(h, .COOKIEFILE, cstring(""))
+	ok := true
+	// Reject older/unsupported libcurl builds where any critical policy
+	// option is ignored; otherwise SSRF/proxy/TLS checks could fail open.
+	if curl.easy_setopt(h, .USERAGENT, cstring("ai-odin-browser/0.2 (semantic browser)")) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .ACCEPT_ENCODING, cstring("")) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .PROTOCOLS_STR, cstring("http,https")) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .REDIR_PROTOCOLS_STR, cstring("http,https")) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .FOLLOWLOCATION, libc.long(0)) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .CONNECTTIMEOUT_MS, libc.long(4000)) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .TIMEOUT_MS, libc.long(12000)) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .NOSIGNAL, libc.long(1)) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .SSL_VERIFYPEER, libc.long(1)) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .SSL_VERIFYHOST, libc.long(2)) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .NOPROXY, cstring("*")) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .PROXY, cstring("")) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .HTTPGET, libc.long(1)) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .WRITEFUNCTION, fetch_write) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .HEADERFUNCTION, fetch_headers_callback) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .PREREQFUNCTION, fetch_prereq) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .PREREQDATA, &s.policy) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .COOKIEFILE, cstring("")) != .E_OK {ok = false}
 	if !allow_private {
-		// Public IPv4 only until public IPv6 classification is implemented.
-		curl.easy_setopt(h, .IPRESOLVE, libc.long(curl.IPRESOLVE_V4))
+		if curl.easy_setopt(h, .IPRESOLVE, libc.long(curl.IPRESOLVE_V4)) != .E_OK {
+			ok = false
+		}
+	}
+	if !ok {
+		curl.easy_cleanup(h)
+		s.handle = nil
+		return false
 	}
 	return true
 }
@@ -117,10 +125,13 @@ fetch_session_once :: proc(s: ^Fetch_Session, target: string) -> (Fetch_Result, 
 	url_c := strings.clone_to_cstring(target)
 	defer delete(url_c)
 	h := s.handle
-	curl.easy_setopt(h, .URL, url_c)
-	curl.easy_setopt(h, .HTTPGET, libc.long(1))
-	curl.easy_setopt(h, .WRITEDATA, &received)
-	curl.easy_setopt(h, .HEADERDATA, &headers)
+	if curl.easy_setopt(h, .URL, url_c) != .E_OK ||
+		curl.easy_setopt(h, .HTTPGET, libc.long(1)) != .E_OK ||
+		curl.easy_setopt(h, .WRITEDATA, &received) != .E_OK ||
+		curl.easy_setopt(h, .HEADERDATA, &headers) != .E_OK {
+		out.error = "libcurl failed to apply request policy"
+		return out, ""
+	}
 	// NOTE: each callback data pointer is valid only for this synchronous call.
 	err := curl.easy_perform(h)
 	if received.exceeded {
