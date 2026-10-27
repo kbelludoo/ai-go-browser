@@ -4,6 +4,8 @@ import "core:fmt"
 import "core:os"
 import "core:strconv"
 import "core:strings"
+import vmem "core:mem/virtual"
+import "base:runtime"
 
 // Minimal native Odin command-line browser. This is a static semantic client,
 // not a JavaScript/Chromium replacement.
@@ -36,6 +38,34 @@ print_page :: proc(response: Fetch_Result, page: Parsed_Page) {
 			fmt.printf("  f%d: %s %s\n", i+1, form.method, form.action)
 		}
 	}
+}
+
+// Each semantic operation uses a temporary arena. All intermediate HTML,
+// Markdown, entities and Page data are reclaimed in one operation.
+print_fetched_page :: proc(response: Fetch_Result) {
+	arena: vmem.Arena
+	if vmem.arena_init_growing(&arena) != nil {
+		fmt.println("Erro: não foi possível alocar arena")
+		return
+	}
+	defer vmem.arena_destroy(&arena)
+	context.allocator = vmem.arena_allocator(&arena)
+	print_page(response, parse_html(response.body, response.effective_url))
+}
+
+get_link_target :: proc(response: Fetch_Result, index: int) -> (string, bool) {
+	arena: vmem.Arena
+	if vmem.arena_init_growing(&arena) != nil {
+		return "", false
+	}
+	defer vmem.arena_destroy(&arena)
+	context.allocator = vmem.arena_allocator(&arena)
+	page := parse_html(response.body, response.effective_url)
+	if index < 1 || index > len(page.links) {
+		return "", false
+	}
+	// Duplicate into the general heap before releasing the per-page arena.
+	return strings.clone(page.links[index-1].url, runtime.default_context().allocator), true
 }
 
 main :: proc() {
@@ -77,13 +107,13 @@ main :: proc() {
 	}
 	target := os.args[2]
 	first := fetch_get(target, allow_private)
+	defer delete(first.body)
 	if first.error != "" {
 		fmt.printf("Erro HTTP: %s\n", first.error)
 		return
 	}
 	if operation == "open" {
-		page := parse_html(first.body, first.effective_url)
-		print_page(first, page)
+		print_fetched_page(first)
 		return
 	}
 	if !strings.has_prefix(os.args[3], "l") {
@@ -95,16 +125,17 @@ main :: proc() {
 		fmt.println("Referência inválida. Use l1, l2...")
 		return
 	}
-	page := parse_html(first.body, first.effective_url)
-	if index > len(page.links) {
-		fmt.printf("Link l%d não encontrado (total: %d)\n", index, len(page.links))
+	next_url, found := get_link_target(first, index)
+	if !found {
+		fmt.printf("Link l%d não encontrado\n", index)
 		return
 	}
-	next_url := page.links[index-1].url
+	defer delete(next_url)
 	next := fetch_get(next_url, allow_private)
+	defer delete(next.body)
 	if next.error != "" {
 		fmt.printf("Erro ao seguir link: %s\n", next.error)
 		return
 	}
-	print_page(next, parse_html(next.body, next.effective_url))
+	print_fetched_page(next)
 }
