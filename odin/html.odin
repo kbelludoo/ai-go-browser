@@ -160,21 +160,21 @@ html_resolve :: proc(base, ref: string) -> string {
 	}
 	if strings.has_prefix(href, "//") {
 		if strings.has_prefix(base, "https://") {
-			return strings.clone("https:"+href)
+			return strings.concatenate([]string{"https:", href})
 		}
-		return strings.clone("http:"+href)
+		return strings.concatenate([]string{"http:", href})
 	}
 	if strings.has_prefix(href, "/") {
-		return strings.clone(origin+href)
+		return strings.concatenate([]string{origin, href})
 	}
 	path := base[len(origin):]
 	if i := strings.index(path, "?"); i >= 0 { path = path[:i] }
 	if i := strings.index(path, "#"); i >= 0 { path = path[:i] }
 	slash := strings.last_index(path, "/")
 	if slash < 0 {
-		return strings.clone(origin+"/"+href)
+		return strings.concatenate([]string{origin, "/", href})
 	}
-	return strings.clone(origin+path[:slash+1]+href)
+	return strings.concatenate([]string{origin, path[:slash+1], href})
 }
 
 html_decode :: proc(src: string) -> string {
