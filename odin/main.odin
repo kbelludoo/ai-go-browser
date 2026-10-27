@@ -16,6 +16,7 @@ print_usage :: proc() {
 	fmt.println("  ai-odin-browser tokens arquivo.md")
 	fmt.println("  ai-odin-browser open https://example.com")
 	fmt.println("  ai-odin-browser follow https://example.com l1")
+	fmt.println("  ai-odin-browser submit https://example.com f1 q=odin")
 	fmt.println("  Adicione --allow-private no fim para testar um servidor local.")
 }
 
@@ -68,6 +69,22 @@ get_link_target :: proc(response: Fetch_Result, index: int) -> (string, bool) {
 	return strings.clone(page.links[index-1].url, runtime.default_context().allocator), true
 }
 
+get_form_target :: proc(response: Fetch_Result, index: int, overrides: []string) -> (string, bool) {
+	arena: vmem.Arena
+	if vmem.arena_init_growing(&arena) != nil {
+		return "", false
+	}
+	defer vmem.arena_destroy(&arena)
+	context.allocator = vmem.arena_allocator(&arena)
+	page := parse_html(response.body, response.effective_url)
+	if index < 1 || index > len(page.forms) {
+		return "", false
+	}
+	target, ok := form_get_url(page.forms[index-1], overrides)
+	if !ok {return "", false}
+	return strings.clone(target, runtime.default_context().allocator), true
+}
+
 main :: proc() {
 	if len(os.args) < 3 {
 		print_usage()
@@ -92,7 +109,7 @@ main :: proc() {
 		}
 		return
 	}
-	if operation != "open" && operation != "follow" {
+	if operation != "open" && operation != "follow" && operation != "submit" {
 		print_usage()
 		return
 	}
@@ -101,7 +118,8 @@ main :: proc() {
 		if arg == "--allow-private" {allow_private = true}
 	}
 	if operation == "open" && len(os.args) > 4 ||
-		operation == "follow" && (len(os.args) < 4 || len(os.args) > 5) {
+		operation == "follow" && (len(os.args) < 4 || len(os.args) > 5) ||
+		operation == "submit" && len(os.args) < 4 {
 		print_usage()
 		return
 	}
@@ -115,6 +133,34 @@ main :: proc() {
 	}
 	if operation == "open" {
 		print_fetched_page(first)
+		return
+	}
+	if operation == "submit" {
+		if !strings.has_prefix(os.args[3], "f") {
+			fmt.println("Referência inválida. Use f1, f2...")
+			return
+		}
+		form_idx, ok := strconv.parse_int(os.args[3][1:], 10)
+		if !ok || form_idx < 1 {return}
+		overrides := make([dynamic]string)
+		defer delete(overrides)
+		for arg in os.args[4:] {
+			if arg != "--allow-private" {append(&overrides, arg)}
+		}
+		next_url, found := get_form_target(first, form_idx, overrides[:])
+		if !found {
+			fmt.println("Formulário inválido, método não-GET ou campo desconhecido")
+			return
+		}
+		defer delete(next_url)
+		next := fetch_get(next_url, allow_private)
+		defer delete(next.body)
+		defer delete(next.effective_url)
+		if next.error != "" {
+			fmt.printf("Erro HTTP: %s\n", next.error)
+			return
+		}
+		print_fetched_page(next)
 		return
 	}
 	if !strings.has_prefix(os.args[3], "l") {
