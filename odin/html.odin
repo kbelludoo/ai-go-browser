@@ -258,6 +258,7 @@ parse_html :: proc(source: string, page_url: string) -> Parsed_Page {
 	defer strings.builder_destroy(&captured)
 	active: string = ""
 	active_href := ""
+	pending_button := Page_Button{}
 	hidden := ""
 	script_kind := ""
 	script_raw := strings.builder_make()
@@ -388,6 +389,37 @@ parse_html :: proc(source: string, page_url: string) -> Parsed_Page {
 					active_href = ""
 					strings.builder_reset(&captured)
 					if tag.name == "a" {active_href = html_resolve(page_url, html_attr(tag, "href"))}
+					if tag.name == "button" {
+						pending_button = Page_Button {
+							disabled=html_tag_has_attr(tag, "disabled"),
+						}
+						// Prefer explicit HTML overrides, then htmx, then form
+						// association. A data-* URL is only a hint, not execution.
+						if hint := html_attr(tag, "formaction"); hint != "" {
+							pending_button.action = html_resolve(page_url, hint)
+							pending_button.method = ascii_lower(html_attr(tag, "formmethod"))
+							pending_button.source = "formaction"
+						} else if hint := html_attr(tag, "hx-get"); hint != "" {
+							pending_button.action = html_resolve(page_url, hint)
+							pending_button.method = "get"
+							pending_button.source = "hx-get"
+						} else if hint := html_attr(tag, "hx-post"); hint != "" {
+							pending_button.action = html_resolve(page_url, hint)
+							pending_button.method = "post"
+							pending_button.source = "hx-post"
+						} else if hint := html_attr(tag, "data-url"); hint != "" {
+							pending_button.action = html_resolve(page_url, hint)
+							pending_button.source = "data-url"
+						} else if active_form >= 0 {
+							pending_button.action = result.forms[active_form].action
+							pending_button.method = result.forms[active_form].method
+							pending_button.source = "form"
+						}
+						if pending_button.method == "" && pending_button.source == "formaction" &&
+							active_form >= 0 {
+							pending_button.method = result.forms[active_form].method
+						}
+					}
 				}
 			}
 			if tag.name == "br" {strings.write_byte(&body, '\n')}
@@ -408,7 +440,12 @@ parse_html :: proc(source: string, page_url: string) -> Parsed_Page {
 					}
 				case "button":
 					if value != "" && len(result.buttons) < HTML_MAX_ITEMS {
-						append(&result.buttons, Page_Button{label=strings.clone(value)})
+						pending_button.label = strings.clone(value)
+						if pending_button.action == "" {
+							pending_button.method = ""
+							pending_button.source = ""
+						}
+						append(&result.buttons, pending_button)
 					}
 				case:
 					level := heading_level(active)
