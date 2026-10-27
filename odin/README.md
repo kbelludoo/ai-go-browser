@@ -14,6 +14,7 @@ uma conversão completa do repositório.
 | Referências de link l1, l2 | Implementado | Navegação estática com um novo GET |
 | Formulários GET f1, f2 | Implementado | POST recusado, sem estado de sessão |
 | JSON-LD, __NEXT_DATA__, __NUXT_DATA__ | Implementado | JSON validado, extrai payload bruto |
+| Exportação JSON para agentes de IA | Implementado | Esquema Odin menor que o JSON Go |
 | Transporte HTTP/HTTPS | Implementado | libcurl, sem redirecionamentos automáticos |
 | Proteção SSRF | Parcial | Rejeita IPs IPv4 privados/reservados antes da requisição; sem IPv6 restrito |
 | JavaScript, CDP, DOM dinâmico, SQLite e MCP | Não implementado | Permanecem no navegador Go |
@@ -44,6 +45,9 @@ uma conversão completa do repositório.
     # Payloads SSR, sem executar JavaScript
     ./ai-odin-browser hydrate https://example.com
 
+    # Saída estruturada JSON para agentes
+    ./ai-odin-browser export https://example.com
+
 Por padrão, IPs privados e de loopback são bloqueados. Para testar um
 servidor local sob seu controle, adicione --allow-private ao final.
 Isso relaxa a proteção SSRF e não deve ser usado em URLs de terceiros.
@@ -52,7 +56,8 @@ Isso relaxa a proteção SSRF e não deve ser usado em URLs de terceiros.
 
 O workflow .github/workflows/odin.yml instala Odin e libcurl, testa e
 compila. O smoke inicia um servidor HTTP local, busca páginas, segue
-um link, submete um formulário GET e extrai dados JSON-LD/Next/Nuxt.
+um link, submete um formulário GET, extrai JSON-LD/Next/Nuxt e
+valida a saída estruturada JSON.
 
 Os testes **não demonstram paridade** com Go, nem comprovam capacidade
 de navegar em todo site público ou suportar apps dependentes de JS.
