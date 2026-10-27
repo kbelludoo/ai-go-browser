@@ -141,6 +141,11 @@ fetch_get :: proc(target: string, allow_private: bool = false) -> Fetch_Result {
 	curl.easy_setopt(handle, .WRITEDATA, &received)
 	curl.easy_setopt(handle, .PREREQFUNCTION, fetch_prereq)
 	curl.easy_setopt(handle, .PREREQDATA, &policy)
+	if !allow_private {
+		// Restricted mode currently classifies IPv4 only; avoid IPv6
+		// handshake failure on dual-stack hosts, and deny private IPv4.
+		curl.easy_setopt(handle, .IPRESOLVE, libc.long(curl.IPRESOLVE_V4))
+	}
 
 	err := curl.easy_perform(handle)
 	if received.exceeded {
