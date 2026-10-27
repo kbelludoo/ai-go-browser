@@ -17,6 +17,7 @@ print_usage :: proc() {
 	fmt.println("  ai-odin-browser open https://example.com")
 	fmt.println("  ai-odin-browser follow https://example.com l1")
 	fmt.println("  ai-odin-browser submit https://example.com f1 q=odin")
+	fmt.println("  ai-odin-browser hydrate https://example.com")
 	fmt.println("  Adicione --allow-private no fim para testar um servidor local.")
 }
 
@@ -27,6 +28,11 @@ print_page :: proc(response: Fetch_Result, page: Parsed_Page) {
 		fmt.println("AVISO: limite de HTML ou tags atingido")
 	}
 	fmt.println(page_to_cso(page.semantic))
+	if len(page.hydration.json_ld) > 0 || page.hydration.next_data != "" ||
+		page.hydration.nuxt_data != "" {
+		fmt.printf("@hydration: json_ld=%d next_bytes=%d nuxt_bytes=%d\n",
+			len(page.hydration.json_ld), len(page.hydration.next_data), len(page.hydration.nuxt_data))
+	}
 	if len(page.links) > 0 {
 		fmt.println("@references:")
 		for link, i in page.links {
@@ -52,6 +58,24 @@ print_fetched_page :: proc(response: Fetch_Result) {
 	defer vmem.arena_destroy(&arena)
 	context.allocator = vmem.arena_allocator(&arena)
 	print_page(response, parse_html(response.body, response.effective_url))
+}
+
+print_hydration :: proc(response: Fetch_Result) {
+	arena: vmem.Arena
+	if vmem.arena_init_growing(&arena) != nil {return}
+	defer vmem.arena_destroy(&arena)
+	context.allocator = vmem.arena_allocator(&arena)
+	p := parse_html(response.body, response.effective_url)
+	fmt.printf("URL: %s\n", response.effective_url)
+	for payload, i in p.hydration.json_ld {
+		fmt.printf("@json_ld[%d]: %s\n", i+1, payload)
+	}
+	if p.hydration.next_data != "" {
+		fmt.printf("@next_data: %s\n", p.hydration.next_data)
+	}
+	if p.hydration.nuxt_data != "" {
+		fmt.printf("@nuxt_data: %s\n", p.hydration.nuxt_data)
+	}
 }
 
 get_link_target :: proc(response: Fetch_Result, index: int) -> (string, bool) {
@@ -109,7 +133,7 @@ main :: proc() {
 		}
 		return
 	}
-	if operation != "open" && operation != "follow" && operation != "submit" {
+	if operation != "open" && operation != "follow" && operation != "submit" && operation != "hydrate" {
 		print_usage()
 		return
 	}
@@ -117,7 +141,7 @@ main :: proc() {
 	for arg in os.args[3:] {
 		if arg == "--allow-private" {allow_private = true}
 	}
-	if operation == "open" && len(os.args) > 4 ||
+	if (operation == "open" || operation == "hydrate") && len(os.args) > 4 ||
 		operation == "follow" && (len(os.args) < 4 || len(os.args) > 5) ||
 		operation == "submit" && len(os.args) < 4 {
 		print_usage()
@@ -133,6 +157,10 @@ main :: proc() {
 	}
 	if operation == "open" {
 		print_fetched_page(first)
+		return
+	}
+	if operation == "hydrate" {
+		print_hydration(first)
 		return
 	}
 	if operation == "submit" {
