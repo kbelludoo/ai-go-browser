@@ -44,7 +44,8 @@ fetch_is_public_ipv4 :: proc(ip: string) -> bool {
 		(a == 169 && b == 254) ||
 		(a == 172 && b >= 16 && b <= 31) ||
 		(a == 192 && b == 168) ||
-		(a == 192 && b == 0 && c == 0) ||
+		(a == 192 && b == 0) ||
+		(a == 192 && b == 88 && c == 99) ||
 		(a == 198 && (b == 18 || b == 19)) ||
 		(a == 192 && b == 0 && c == 2) ||
 		(a == 198 && b == 51 && c == 100) ||
@@ -77,8 +78,12 @@ fetch_write :: proc "c" (incoming: [^]byte, item_size: int, item_count: int, use
 	context = runtime.default_context()
 	buf := (^Fetch_Buffer)(userdata)
 	if buf == nil || item_size <= 0 || item_count <= 0 {return 0}
+	if item_count > FETCH_MAX_BYTES/item_size {
+		buf.exceeded = true
+		return 0
+	}
 	n := item_size*item_count
-	if n > FETCH_MAX_BYTES || len(buf.bytes) > FETCH_MAX_BYTES-n {
+	if len(buf.bytes) > FETCH_MAX_BYTES-n {
 		buf.exceeded = true
 		return 0
 	}
