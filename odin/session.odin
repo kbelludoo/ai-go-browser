@@ -165,6 +165,13 @@ fetch_redirect_url :: proc(base, location: string) -> string {
 		if i := strings.index(prefix, "?"); i >= 0 {prefix = prefix[:i]}
 		return strings.concatenate([]string{prefix, loc})
 	}
+	// html_resolve returns a borrowed slice for an absolute URL, but owns
+	// its result for relative URLs. Return an owned copy for every branch.
+	// Otherwise freeing the Location header invalidates the next URL and
+	// can cause a use-after-free / double-free during redirect validation.
+	if strings.has_prefix(loc, "http://") || strings.has_prefix(loc, "https://") {
+		return strings.clone(loc)
+	}
 	return html_resolve(base, loc)
 }
 
@@ -194,7 +201,7 @@ fetch_session_get :: proc(s: ^Fetch_Session, target: string) -> Fetch_Result {
 		next := fetch_redirect_url(result.effective_url, location)
 		delete(location)
 		if !fetch_validate_url(next) {
-			delete(next)
+			if next != "" {delete(next)}
 			delete(result.body)
 			result.body = ""
 			result.error = "redirect rejected: unsupported or unsafe URL"
