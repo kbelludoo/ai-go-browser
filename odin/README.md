@@ -4,7 +4,8 @@ Estado: **primeiro módulo portado, sem paridade do navegador completo**.
 
 A pasta odin/ mantém uma implementação independente em Odin do trecho
 browser/cso.go, com:
-- markdown_to_cso: compactação semântica para agentes (CSO)
+- markdown_to_cso: compactação de Markdown para agentes (CSO)
+- page_to_cso: compactação de páginas estruturadas Page/Link/Heading/Input/Button
 - estimate_tokens: estimativa heurística de tokens
 - CLI para arquivos locais
 - testes unitários próprios
