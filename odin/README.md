@@ -11,7 +11,8 @@ uma conversão completa do repositório.
 | Compactação MarkdownToCSO, ToCSO e estimativa de tokens | Implementado | Não é tokenizador BPE |
 | Semantic_Page, links e headings | Implementado | Representação menor que a estrutura Go |
 | Títulos, texto, links, inputs e forms de HTML | Implementado | Scanner limitado; não é um parser HTML5 compatível |
-| Referências de link l1, l2 | Implementado | Navegação estática com um novo GET |
+| Referências de link l1, l2 | Implementado | Navegação estática com GET |
+| Ações de botões antes do clique | Parcial | Targets de form, formaction, htmx e data-url; sem executar scripts |
 | Formulários GET f1, f2 | Implementado | POST recusado, sem estado de sessão |
 | JSON-LD, __NEXT_DATA__, __NUXT_DATA__ | Implementado | JSON validado, extrai payload bruto |
 | Exportação JSON para agentes de IA | Implementado | Esquema Odin menor que o JSON Go |
@@ -61,6 +62,8 @@ No modo agente, envie um JSON por linha e leia uma resposta JSON por linha:
     {"cmd":"submit","ref":"f1","fields":["q=odin"]}
     {"cmd":"quit"}
 
+A saída JSON de `export` e `snapshot` inclui ações declaradas em botões
+(`action`, `method`, `source`, `disabled`) para inspeção pré-clique.
 O navegador conserva cookies, URL e página atuais no processo. Não salva
 sessões em disco. Erros em comandos não destroem a página anterior. Uma
 sessão JSONL é sequencial; não é um motor JavaScript ou protocolo MCP.
@@ -83,6 +86,8 @@ de navegar em todo site público ou suportar apps dependentes de JS.
 ## Segurança e limitações
 
 - HTTP GET apenas, sem submissão POST ou execução de scripts.
+- Botões com destino HTTP declarado mostram metadados, sem executar POST
+  ou chamadas JavaScript implicitamente; botão desabilitado é sinalizado.
 - Verificação TLS ligada, somente protocolos http/https, sem proxy e
   com até cinco redirecionamentos manuais, cada um revalidado.
 - Timeout de conexão 4 segundos; transferência 12 segundos.
