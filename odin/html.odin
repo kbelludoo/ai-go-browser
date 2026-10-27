@@ -2,6 +2,7 @@ package main
 
 import "core:strings"
 import "core:encoding/entity"
+import "core:unicode"
 import "core:encoding/json"
 
 // This is a bounded static HTML extraction layer, NOT a fully conforming HTML5 DOM.
@@ -241,6 +242,27 @@ heading_level :: proc(tag: string) -> int {
 	return 0
 }
 
+// Normalize visible page text to the single-space representation used by
+// browser.Parse's pageText collector. This counts UTF-8 codepoints, not bytes,
+// and never inserts extra whitespace before the first visible word.
+html_normalize_visible_text :: proc(src: string) -> string {
+	b := strings.builder_make()
+	defer strings.builder_destroy(&b)
+	pending_space := false
+	for ch in src {
+		if unicode.is_space(ch) {
+			if len(b.buf) > 0 {pending_space = true}
+		} else {
+			if pending_space {
+				strings.write_byte(&b, ' ')
+				pending_space = false
+			}
+			strings.write_rune(&b, ch)
+		}
+	}
+	return strings.clone(strings.to_string(b))
+}
+
 // The caller keeps the page and its backing HTML source alive while reading
 // the result. This implementation is optimized for single-shot CLI use.
 parse_html :: proc(source: string, page_url: string) -> Parsed_Page {
@@ -459,7 +481,7 @@ parse_html :: proc(source: string, page_url: string) -> Parsed_Page {
 		}
 	}
 	if result.tags_read >= HTML_MAX_TAGS || i < len(html) {result.truncated = true}
-	result.semantic.text = strings.clone(strings.to_string(body))
+	result.semantic.text = html_normalize_visible_text(strings.to_string(body))
 	result.semantic.headings = result.headings[:]
 	result.semantic.links = result.links[:]
 	result.semantic.inputs = result.inputs[:]
