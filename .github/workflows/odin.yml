@@ -18,6 +18,8 @@ jobs:
       - uses: laytan/setup-odin@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install libcurl headers and linker library
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libcurl4-openssl-dev
       - name: Unit tests
         run: odin test odin
       - name: Build CLI
