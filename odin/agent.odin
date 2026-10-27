@@ -27,12 +27,29 @@ Agent_Command :: struct {
 	url: string,
 	ref: string,
 	fields: []string,
+	selector: string,
 }
 
 Agent_Reply :: struct {
 	ok: bool,
 	error: string,
 	page: Browser_Output,
+}
+
+Agent_Query_Reply :: struct {
+	ok: bool,
+	error: string,
+	matches: []Query_Element,
+}
+
+agent_emit_query :: proc(matches: []Query_Element, error_message: string) {
+	reply := Agent_Query_Reply{ok=error_message=="",error=error_message,matches=matches}
+	data,err := json.marshal(reply)
+	if err != nil {
+		fmt.println("{\"ok\":false,\"error\":\"query serialization failed\"}")
+		return
+	}
+	fmt.println(string(data))
 }
 
 agent_free_saved :: proc(saved: ^Fetch_Result) {
@@ -79,6 +96,15 @@ agent_execute_line :: proc(line: string, session: ^Fetch_Session, saved: ^Fetch_
 	if cmd.cmd == "quit" {
 		agent_emit(true, "", nil)
 		return false
+	}
+	if cmd.cmd == "query" {
+		if saved.effective_url == "" {
+			agent_emit_query(nil,"no page opened")
+			return true
+		}
+		matches, query_err := query_static(saved.body,saved.effective_url,cmd.selector)
+		agent_emit_query(matches,query_err)
+		return true
 	}
 	if cmd.cmd == "snapshot" {
 		if saved.effective_url == "" {
