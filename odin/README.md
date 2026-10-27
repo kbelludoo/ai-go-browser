@@ -15,8 +15,10 @@ uma conversão completa do repositório.
 | Formulários GET f1, f2 | Implementado | POST recusado, sem estado de sessão |
 | JSON-LD, __NEXT_DATA__, __NUXT_DATA__ | Implementado | JSON validado, extrai payload bruto |
 | Exportação JSON para agentes de IA | Implementado | Esquema Odin menor que o JSON Go |
-| Transporte HTTP/HTTPS | Implementado | libcurl, sem redirecionamentos automáticos |
-| Proteção SSRF | Parcial | Rejeita IPs IPv4 privados/reservados antes da requisição; sem IPv6 restrito |
+| Transporte HTTP/HTTPS | Implementado | libcurl, redirecionamentos explícitos até 5 saltos |
+| Cookies e sessões HTTP | Implementado | Cookie jar em memória, limitado à execução atual |
+| Agent mode JSON Lines | Implementado | Sessão persistente, mas não é MCP |
+| Proteção SSRF | Parcial | Rejeita IPs IPv4 privados/reservados em cada conexão; sem IPv6 restrito |
 | JavaScript, CDP, DOM dinâmico, SQLite e MCP | Não implementado | Permanecem no navegador Go |
 
 ## Dependências
@@ -48,6 +50,21 @@ uma conversão completa do repositório.
     # Saída estruturada JSON para agentes
     ./ai-odin-browser export https://example.com
 
+    # Modo interativo JSON Lines para agentes (stdin/stdout)
+    ./ai-odin-browser agent
+
+No modo agente, envie um JSON por linha e leia uma resposta JSON por linha:
+
+    {"cmd":"open","url":"https://example.com"}
+    {"cmd":"snapshot"}
+    {"cmd":"follow","ref":"l1"}
+    {"cmd":"submit","ref":"f1","fields":["q=odin"]}
+    {"cmd":"quit"}
+
+O navegador conserva cookies, URL e página atuais no processo. Não salva
+sessões em disco. Erros em comandos não destroem a página anterior. Uma
+sessão JSONL é sequencial; não é um motor JavaScript ou protocolo MCP.
+
 Por padrão, IPs privados e de loopback são bloqueados. Para testar um
 servidor local sob seu controle, adicione --allow-private ao final.
 Isso relaxa a proteção SSRF e não deve ser usado em URLs de terceiros.
@@ -56,8 +73,9 @@ Isso relaxa a proteção SSRF e não deve ser usado em URLs de terceiros.
 
 O workflow .github/workflows/odin.yml instala Odin e libcurl, testa e
 compila. O smoke inicia um servidor HTTP local, busca páginas, segue
-um link, submete um formulário GET, extrai JSON-LD/Next/Nuxt e
-valida a saída estruturada JSON.
+um link, submete um formulário GET, extrai JSON-LD/Next/Nuxt,
+valida a saída estruturada JSON e testa cookies/redirects com servidor
+local. O teste de agente JSONL mantém página e cookies entre comandos.
 
 Os testes **não demonstram paridade** com Go, nem comprovam capacidade
 de navegar em todo site público ou suportar apps dependentes de JS.
@@ -66,7 +84,7 @@ de navegar em todo site público ou suportar apps dependentes de JS.
 
 - HTTP GET apenas, sem submissão POST ou execução de scripts.
 - Verificação TLS ligada, somente protocolos http/https, sem proxy e
-  sem acompanhamento automático de redirecionamentos.
+  com até cinco redirecionamentos manuais, cada um revalidado.
 - Timeout de conexão 4 segundos; transferência 12 segundos.
 - Limites: corpo de 2 MiB, scanner de 50 mil tags, máximo de 2048 itens.
 - O conteúdo extraído da web não é confiável; nunca deve ser tratado
@@ -80,7 +98,8 @@ de navegar em todo site público ou suportar apps dependentes de JS.
 ## Etapas ainda necessárias para reescrita completa
 
 1. Parser HTML5 completo e testes comparativos de DOM, formulários e encoding.
-2. Cookies, redirects com SSRF em cada salto, IPv6 seguro e persistência.
+2. Melhorar a cobertura de cookies/sessões, classificação IPv6 segura,
+   URLs relativas complexas, cache, persistência opcional e ataques de DNS.
 3. Actions, navegação e estado de sessão compatíveis com Go.
 4. Adaptador JavaScript/CDP e eventos controlados por limites de recursos.
 5. MCP, memória SQLite, API e comandos auxiliares.
