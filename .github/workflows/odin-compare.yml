@@ -50,6 +50,15 @@ jobs:
       - name: Compare small fixture and record parity
         run: |
           python3 odin/bench/compare.py --fixture odin/fixtures/index.html --url https://example.com/index.html --iterations 1500 --reps 5 --out odin/bench/results-small.json
+      - name: Benchmark real same-host HTTP browser sessions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 18767 --bind 127.0.0.1 --directory odin/bench >/tmp/compare-http.log 2>&1 &
+          server=$!
+          trap 'kill "$server" || true' EXIT
+          sleep 1
+          python3 odin/bench/live_compare.py
       - name: Check Go and Odin token heuristics against same text
         run: |
           go_token=$(./go-browser-reference tokens odin/fixtures/index.html placeholder)
@@ -63,4 +72,5 @@ jobs:
           path: |
             odin/bench/results.json
             odin/bench/results-small.json
+            odin/bench/live-results.json
           if-no-files-found: warn
