@@ -24,6 +24,10 @@ Page_Input :: struct {
 
 Page_Button :: struct {
 	label: string,
+	action: string,
+	method: string,
+	source: string,
+	disabled: bool,
 }
 
 Semantic_Page :: struct {
