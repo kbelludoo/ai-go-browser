@@ -187,8 +187,9 @@ strip_table_markup :: proc(line: string) -> string {
 // markdown_to_cso is the Odin counterpart of browser.MarkdownToCSO.
 // The limit is measured in bytes for compatibility with the Go code.
 markdown_to_cso :: proc(markdown: string, max_chars: int = 10000) -> string {
-	if max_chars <= 0 {
-		max_chars = 10000
+	limit := max_chars
+	if limit <= 0 {
+		limit = 10000
 	}
 	out := strings.builder_make()
 	defer strings.builder_destroy(&out)
@@ -231,8 +232,8 @@ markdown_to_cso :: proc(markdown: string, max_chars: int = 10000) -> string {
 		strings.write_string(&out, normalized)
 	}
 	res := strings.trim_space(strings.to_string(out))
-	if len(res) > max_chars {
-		res = res[:max_chars]
+	if len(res) > limit {
+		res = res[:limit]
 	}
 	return strings.clone(strings.trim_space(res))
 }
