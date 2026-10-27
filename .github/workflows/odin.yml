@@ -22,3 +22,20 @@ jobs:
         run: odin test odin
       - name: Build CLI
         run: odin build odin -out:ai-odin-browser
+
+      - name: Local HTTP end-to-end smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 18765 --bind 127.0.0.1 --directory odin/fixtures >/tmp/odin-http.log 2>&1 &
+          server=$!
+          trap 'kill "$server" || true' EXIT
+          sleep 1
+          ./ai-odin-browser open http://127.0.0.1:18765/index.html --allow-private >/tmp/odin-open.out
+          grep -F "Odin Demo & Smoke" /tmp/odin-open.out
+          grep -F "Navegador semântico Odin" /tmp/odin-open.out
+          grep -F "l1: Ler artigo de teste" /tmp/odin-open.out
+          if grep -q "SEGREDO-NAO-EXIBIR" /tmp/odin-open.out; then exit 1; fi
+          ./ai-odin-browser follow http://127.0.0.1:18765/index.html l1 --allow-private >/tmp/odin-follow.out
+          grep -F "Artigo Odin" /tmp/odin-follow.out
+          grep -F "Segundo documento" /tmp/odin-follow.out
