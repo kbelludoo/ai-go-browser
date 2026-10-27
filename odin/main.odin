@@ -108,6 +108,7 @@ main :: proc() {
 	target := os.args[2]
 	first := fetch_get(target, allow_private)
 	defer delete(first.body)
+	defer delete(first.effective_url)
 	if first.error != "" {
 		fmt.printf("Erro HTTP: %s\n", first.error)
 		return
@@ -133,6 +134,7 @@ main :: proc() {
 	defer delete(next_url)
 	next := fetch_get(next_url, allow_private)
 	defer delete(next.body)
+	defer delete(next.effective_url)
 	if next.error != "" {
 		fmt.printf("Erro ao seguir link: %s\n", next.error)
 		return
