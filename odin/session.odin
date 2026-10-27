@@ -28,9 +28,9 @@ fetch_headers_callback :: proc "c" (
 	context = runtime.default_context()
 	h := (^Fetch_Headers)(userdata)
 	if h == nil || item_size <= 0 || count <= 0 {return 0}
-	if item_size > 8192/count {return item_size*count}
+	if item_size > 8192/count {return 0}
 	n := item_size*count
-	if n > 8192 {return n} // Ignore overlong header lines, not the transfer.
+	if n > 8192 {return 0} // Reject overlong headers rather than risk overflow.
 	line := incoming[:n]
 	// Clear any previous Location when libcurl starts a new response,
 	// e.g. after an informational 100 Continue response.
