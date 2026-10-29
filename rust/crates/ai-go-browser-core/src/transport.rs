@@ -118,10 +118,7 @@ impl SafeHttpTransport {
             let mut body = Vec::new();
             while let Some(chunk) = response.chunk().await
                 .map_err(|e| TransportError::Request(e.to_string()))? {
-                if body.len().saturating_add(chunk.len()) > self.max_response_bytes {
-                    return Err(TransportError::ResponseTooLarge { limit: self.max_response_bytes });
-                }
-                body.extend_from_slice(&chunk);
+                append_limited_body(&mut body, &chunk, self.max_response_bytes)?;
             }
 
             return Ok(HttpResponse {
@@ -134,6 +131,19 @@ impl SafeHttpTransport {
 
         Err(TransportError::TooManyRedirects)
     }
+}
+
+/// Append one streamed response chunk without allowing the body to exceed its cap.
+fn append_limited_body(
+    body: &mut Vec<u8>,
+    chunk: &[u8],
+    limit: usize,
+) -> Result<(), TransportError> {
+    if body.len().saturating_add(chunk.len()) > limit {
+        return Err(TransportError::ResponseTooLarge { limit });
+    }
+    body.extend_from_slice(chunk);
+    Ok(())
 }
 
 fn is_redirect(status: StatusCode) -> bool {
@@ -244,6 +254,22 @@ mod tests {
             body: vec![0xff, 0xfe],
         };
         assert_eq!(FetchedPage::from_response(response), Err(TransportError::InvalidUtf8));
+    }
+
+    #[test]
+    fn streamed_body_limit_accepts_exact_limit() {
+        let mut body = Vec::new();
+        append_limited_body(&mut body, b"abc", 5).unwrap();
+        append_limited_body(&mut body, b"de", 5).unwrap();
+        assert_eq!(body, b"abcde");
+    }
+
+    #[test]
+    fn streamed_body_limit_rejects_chunked_overflow_without_appending_it() {
+        let mut body = b"abc".to_vec();
+        let error = append_limited_body(&mut body, b"def", 5).unwrap_err();
+        assert_eq!(error, TransportError::ResponseTooLarge { limit: 5 });
+        assert_eq!(body, b"abc");
     }
 
     #[test]
