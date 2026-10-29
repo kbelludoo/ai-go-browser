@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 scraper = "0.22"
+url = "2"
 
 [lib]
 path = "src/lib.rs"
