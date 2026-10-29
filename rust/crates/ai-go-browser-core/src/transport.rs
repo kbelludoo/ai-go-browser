@@ -103,7 +103,7 @@ impl SafeHttpTransport {
                 let location = response.headers().get(LOCATION)
                     .and_then(|value| value.to_str().ok())
                     .ok_or(TransportError::InvalidRedirect)?;
-                current = current.join(location).map_err(|_| TransportError::InvalidRedirect)?;
+                current = resolve_redirect(&current, location)?;
                 continue;
             }
 
@@ -131,6 +131,13 @@ impl SafeHttpTransport {
 
         Err(TransportError::TooManyRedirects)
     }
+}
+
+/// Resolve and validate a redirect destination before any subsequent DNS lookup or request.
+fn resolve_redirect(current: &Url, location: &str) -> Result<Url, TransportError> {
+    let target = current.join(location).map_err(|_| TransportError::InvalidRedirect)?;
+    validate_url(target.as_str()).map_err(TransportError::Policy)?;
+    Ok(target)
 }
 
 /// Append one streamed response chunk without allowing the body to exceed its cap.
@@ -254,6 +261,25 @@ mod tests {
             body: vec![0xff, 0xfe],
         };
         assert_eq!(FetchedPage::from_response(response), Err(TransportError::InvalidUtf8));
+    }
+
+    #[test]
+    fn redirect_resolution_rejects_private_destinations_before_fetching() {
+        let current = Url::parse("https://example.com/start").unwrap();
+        for location in ["http://127.0.0.1/admin", "http://localhost/admin", "file:///etc/passwd"] {
+            let error = resolve_redirect(&current, location).unwrap_err();
+            assert!(
+                matches!(error, TransportError::Policy(_)),
+                "expected policy rejection for {location}, got {error:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn redirect_resolution_supports_relative_locations() {
+        let current = Url::parse("https://example.com/a/page").unwrap();
+        let target = resolve_redirect(&current, "../next").unwrap();
+        assert_eq!(target.as_str(), "https://example.com/next");
     }
 
     #[test]
