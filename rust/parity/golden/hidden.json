@@ -1,0 +1,48 @@
+{
+  "fixture": "hidden.html",
+  "url": "https://example.test/hidden",
+  "title": "Visibility",
+  "headings": [
+    {
+      "level": 1,
+      "text": "Visibility"
+    }
+  ],
+  "links": [
+    {
+      "ref": "l1",
+      "label": "Visible link",
+      "url": "https://example.test/visible"
+    },
+    {
+      "ref": "l2",
+      "label": "After",
+      "url": "https://example.test/after"
+    }
+  ],
+  "buttons": [
+    {
+      "ref": "b1",
+      "label": "Hidden by attribute",
+      "type": "submit",
+      "action": {
+        "ref": "b1",
+        "label": "Hidden by attribute",
+        "tag": "button"
+      }
+    },
+    {
+      "ref": "b2",
+      "label": "Disabled button",
+      "type": "submit",
+      "disabled": true,
+      "action": {
+        "ref": "b2",
+        "label": "Disabled button",
+        "tag": "button"
+      }
+    }
+  ],
+  "inputs": [],
+  "forms": []
+}

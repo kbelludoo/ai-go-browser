@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><title>Accessible names</title></head>
+<body>
+  <h1 aria-label="Main heading">Ignored text</h1>
+  <span id="lbl">Delete item</span>
+  <span id="lbl2">from cart</span>
+  <button aria-label="Close dialog">X</button>
+  <button aria-labelledby="lbl lbl2">trash</button>
+  <a role="button" href="/apply">Apply changes</a>
+  <div role="link" tabindex="0">Open details</div>
+  <button title="Tooltip only"></button>
+  <input type="text" aria-label="Quantity" name="qty">
+  <input type="text" title="Title only" name="titled">
+  <input type="image" alt="Submit via image" src="/go.png">
+</body>
+</html>

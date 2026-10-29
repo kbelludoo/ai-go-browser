@@ -1,0 +1,84 @@
+{
+  "fixture": "aria.html",
+  "url": "https://example.test/aria",
+  "title": "Accessible names",
+  "headings": [
+    {
+      "level": 1,
+      "text": "Ignored text"
+    }
+  ],
+  "links": [
+    {
+      "ref": "l1",
+      "label": "Apply changes",
+      "url": "https://example.test/apply"
+    }
+  ],
+  "buttons": [
+    {
+      "ref": "b1",
+      "label": "Close dialog",
+      "type": "submit",
+      "action": {
+        "ref": "b1",
+        "label": "Close dialog",
+        "tag": "button"
+      }
+    },
+    {
+      "ref": "b2",
+      "label": "Delete item from cart",
+      "type": "submit",
+      "action": {
+        "ref": "b2",
+        "label": "Delete item from cart",
+        "tag": "button"
+      }
+    },
+    {
+      "ref": "b3",
+      "label": "Apply changes",
+      "type": "button",
+      "action": {
+        "ref": "b3",
+        "label": "Apply changes",
+        "tag": "a"
+      }
+    },
+    {
+      "ref": "b4",
+      "label": "(button)",
+      "type": "submit",
+      "action": {
+        "ref": "b4",
+        "label": "(button)",
+        "tag": "button"
+      }
+    },
+    {
+      "ref": "b5",
+      "label": "(button)",
+      "type": "image",
+      "action": {
+        "ref": "b5",
+        "label": "(button)",
+        "tag": "input"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "ref": "i1",
+      "name": "qty",
+      "type": "text",
+      "label": "Quantity"
+    },
+    {
+      "ref": "i2",
+      "name": "titled",
+      "type": "text"
+    }
+  ],
+  "forms": []
+}

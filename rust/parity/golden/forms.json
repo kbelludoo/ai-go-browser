@@ -1,0 +1,125 @@
+{
+  "fixture": "forms.html",
+  "url": "https://example.test/forms",
+  "title": "Checkout",
+  "headings": [
+    {
+      "level": 1,
+      "text": "Checkout"
+    }
+  ],
+  "links": [],
+  "buttons": [
+    {
+      "ref": "b1",
+      "label": "Pay now",
+      "type": "submit",
+      "form_ref": "f1",
+      "action": {
+        "ref": "b1",
+        "label": "Pay now",
+        "tag": "button",
+        "form_method": "POST",
+        "form_action": "https://example.test/order",
+        "action_summary": "POST https://example.test/order"
+      }
+    },
+    {
+      "ref": "b2",
+      "label": "Later",
+      "type": "button",
+      "disabled": true,
+      "form_ref": "f1",
+      "action": {
+        "ref": "b2",
+        "label": "Later",
+        "tag": "button",
+        "form_method": "POST",
+        "form_action": "https://example.test/order",
+        "action_summary": "POST https://example.test/order"
+      }
+    }
+  ],
+  "inputs": [],
+  "forms": [
+    {
+      "ref": "f1",
+      "action": "https://example.test/order",
+      "method": "POST",
+      "fields": [
+        {
+          "ref": "i1",
+          "id": "email",
+          "name": "email",
+          "type": "email",
+          "label": "Email",
+          "required": true
+        },
+        {
+          "ref": "i2",
+          "id": "plan",
+          "name": "plan",
+          "type": "select",
+          "value": "pro",
+          "label": "Plan",
+          "multiple": true,
+          "values": [
+            "pro"
+          ],
+          "options": [
+            {
+              "value": "basic",
+              "label": "Basic"
+            },
+            {
+              "value": "pro",
+              "label": "Pro",
+              "selected": true
+            },
+            {
+              "value": "team",
+              "label": "Team",
+              "disabled": true
+            }
+          ]
+        },
+        {
+          "ref": "i3",
+          "id": "tos",
+          "name": "tos",
+          "type": "checkbox",
+          "value": "on",
+          "checked": true
+        },
+        {
+          "ref": "i4",
+          "id": "coupon",
+          "name": "coupon",
+          "type": "text",
+          "value": "SAVE10",
+          "label": "Coupon",
+          "readonly": true
+        },
+        {
+          "ref": "i5",
+          "id": "zip",
+          "name": "zip",
+          "type": "text",
+          "label": "ZIP",
+          "pattern": "[0-9]{5}"
+        },
+        {
+          "ref": "i6",
+          "id": "note",
+          "name": "note",
+          "type": "textarea",
+          "value": "Leave at door",
+          "label": "Note"
+        }
+      ],
+      "submit_label": "Pay now",
+      "submit_ref": "b1",
+      "enctype": "application/x-www-form-urlencoded"
+    }
+  ]
+}
