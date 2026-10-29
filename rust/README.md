@@ -5,9 +5,9 @@ behavioral reference until feature-by-feature parity is demonstrated. The Rust
 workspace currently contains **portable core contracts**, not a production browser.
 
 ## Workspace
-- `crates/ai-go-browser-core`: action references, semantic snapshots, initial HTML
-  actionable-element extraction, in-memory session and memory primitives, URL
-  syntax gate, and browser trait.
+- `crates/ai-go-browser-core`: action references and command types, semantic snapshots,
+  initial HTML actionable-element extraction, in-memory session and memory primitives,
+  URL syntax gate, and browser adapter trait/output.
 - Workspace forbids unsafe Rust.
 - Network transport, JS engine, persistent storage, MCP server, and SDK are not
   wired into this initial core.
@@ -27,7 +27,8 @@ cargo clippy --workspace --all-targets -- -D warnings
    and SSRF controls.
 4. Improve HTML extraction for visibility, disabled controls, form labels,
    shadow DOM boundaries, and deterministic reference compatibility.
-5. Add browser actions, session persistence, memory, and JS execution adapter.
+5. Implement concrete browser action execution, session persistence, memory,
+   and a JavaScript runtime adapter.
 6. Port MCP/API/SDK and compare end-to-end behavior against Go.
 7. Benchmark representative workloads and document parity gaps.
 
