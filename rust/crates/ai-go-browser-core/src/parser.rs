@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use scraper::{Html, Selector};
 
 use crate::{ActionRef, SemanticElement, SemanticSnapshot};
@@ -10,6 +12,29 @@ pub fn parse_semantic_html(url: impl Into<String>, html: &str) -> SemanticSnapsh
     let title = document.select(&title_selector).next()
         .map(|e| e.text().collect::<String>().trim().to_owned()).unwrap_or_default();
 
+    let mut id_names = HashMap::<String, String>::new();
+    let id_selector = Selector::parse("[id]").expect("static selector");
+    for node in document.select(&id_selector) {
+        if let Some(id) = node.value().attr("id") {
+            let aria = node.value().attr("aria-label").map(str::trim).filter(|s| !s.is_empty());
+            let text = normalize_text(&node.text().collect::<Vec<_>>().join(" "));
+            if let Some(name) = aria.map(str::to_owned).or(text) {
+                id_names.insert(id.to_owned(), name);
+            }
+        }
+    }
+
+    let mut label_names = HashMap::<String, String>::new();
+    let label_selector = Selector::parse("label[for]").expect("static selector");
+    for label in document.select(&label_selector) {
+        if let (Some(target), Some(name)) = (
+            label.value().attr("for"),
+            normalize_text(&label.text().collect::<Vec<_>>().join(" ")),
+        ) {
+            label_names.entry(target.to_owned()).or_insert(name);
+        }
+    }
+
     let selector = Selector::parse("a[href],button,input,textarea,select,[role='button'],[role='link']")
         .expect("static selector");
     let mut elements = Vec::new();
@@ -20,11 +45,21 @@ pub fn parse_semantic_html(url: impl Into<String>, html: &str) -> SemanticSnapsh
     for node in document.select(&selector) {
         let tag = node.value().name().to_ascii_lowercase();
         let role = node.value().attr("role").map(str::to_owned);
-        let text = normalize_text(node.text().collect::<Vec<_>>().join(" ").as_str());
+        let text = normalize_text(&node.text().collect::<Vec<_>>().join(" "));
         let aria = node.value().attr("aria-label").map(str::trim).filter(|s| !s.is_empty());
+        let labelled_by = node.value().attr("aria-labelledby").map(|ids| {
+            ids.split_whitespace().filter_map(|id| id_names.get(id).map(String::as_str))
+                .collect::<Vec<_>>().join(" ")
+        }).filter(|s| !s.trim().is_empty());
+        let label_for = node.value().attr("id").and_then(|id| label_names.get(id).map(String::as_str));
         let title_attr = node.value().attr("title").map(str::trim).filter(|s| !s.is_empty());
         let value = node.value().attr("value").map(str::trim).filter(|s| !s.is_empty());
-        let name = aria.or(title_attr).or(value).map(str::to_owned).or_else(|| text.clone());
+        let name = aria.map(str::to_owned)
+            .or(labelled_by)
+            .or_else(|| label_for.map(str::to_owned))
+            .or_else(|| title_attr.map(str::to_owned))
+            .or_else(|| value.map(str::to_owned))
+            .or_else(|| text.clone());
         let href = node.value().attr("href").map(str::to_owned);
         let is_link = tag == "a" || role.as_deref() == Some("link");
         let is_field = matches!(tag.as_str(), "input" | "textarea" | "select");
@@ -73,6 +108,27 @@ mod tests {
         assert_eq!(snapshot.elements[0].accessible_name(), Some("Documentation"));
         assert_eq!(snapshot.elements[1].action.as_ref().unwrap().id, "b1");
         assert_eq!(snapshot.elements[2].action.as_ref().unwrap().id, "f1");
+    }
+
+    #[test]
+    fn uses_explicit_label_for_form_fields() {
+        let snapshot = parse_semantic_html("https://example.com",
+            r#"<label for="email">Work email</label><input id="email" type="email">"#);
+        assert_eq!(snapshot.elements[0].accessible_name(), Some("Work email"));
+    }
+
+    #[test]
+    fn resolves_aria_labelledby_in_token_order() {
+        let snapshot = parse_semantic_html("https://example.com",
+            r#"<span id="prefix">Billing</span><span id="field">address</span><input aria-labelledby="prefix field">"#);
+        assert_eq!(snapshot.elements[0].accessible_name(), Some("Billing address"));
+    }
+
+    #[test]
+    fn aria_label_takes_precedence_over_labelledby_and_text() {
+        let snapshot = parse_semantic_html("https://example.com",
+            r#"<span id="name">Other name</span><button aria-labelledby="name" aria-label="Save">Submit</button>"#);
+        assert_eq!(snapshot.elements[0].accessible_name(), Some("Save"));
     }
 
     #[test]
