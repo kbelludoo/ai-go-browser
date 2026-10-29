@@ -113,3 +113,65 @@ impl Browser for HttpSnapshotBrowser {
         self.snapshot.as_ref()
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ActionRef, SemanticElement};
+
+    #[tokio::test]
+    async fn extracts_text_from_current_static_snapshot() {
+        let mut browser = HttpSnapshotBrowser::default();
+        browser.snapshot = Some(SemanticSnapshot {
+            url: "https://example.com".into(),
+            title: "Example".into(),
+            elements: vec![],
+        });
+        browser.current_text = Some("Hello from the page".into());
+
+        let output = browser.perform(BrowserAction::ExtractText).await.unwrap();
+        assert_eq!(output.text.as_deref(), Some("Hello from the page"));
+        assert_eq!(output.snapshot.unwrap().title, "Example");
+    }
+
+    #[tokio::test]
+    async fn rejects_stale_or_forged_action_references() {
+        let mut browser = HttpSnapshotBrowser::default();
+        let action = ActionRef::new("b1", "Save").unwrap();
+        let mut element = SemanticElement::new("button");
+        element.name = Some("Save".into());
+        element.action = Some(action.clone());
+        browser.snapshot = Some(SemanticSnapshot {
+            url: "https://example.com".into(),
+            title: "Example".into(),
+            elements: vec![element],
+        });
+
+        let forged = ActionRef::new("b1", "Delete").unwrap();
+        let result = browser.perform(BrowserAction::Click { target: forged }).await;
+        assert_eq!(result, Err(BrowserError::ActionTargetNotFound("b1".into())));
+        assert!(browser.perform(BrowserAction::Click { target: action }).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn explicitly_rejects_mutating_actions_without_browser_engine() {
+        let mut browser = HttpSnapshotBrowser::default();
+        let target = ActionRef::new("b1", "Save").unwrap();
+        let mut element = SemanticElement::new("button");
+        element.name = Some("Save".into());
+        element.action = Some(target.clone());
+        browser.snapshot = Some(SemanticSnapshot {
+            url: "https://example.com".into(),
+            title: "Example".into(),
+            elements: vec![element],
+        });
+
+        assert_eq!(
+            browser.perform(BrowserAction::Click { target }).await,
+            Err(BrowserError::Unsupported(
+                "mutating actions require a JavaScript-capable browser engine".into()
+            ))
+        );
+    }
+}
