@@ -3,8 +3,8 @@ use std::net::IpAddr;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UrlPolicyError { MissingScheme, UnsupportedScheme, MissingHost, Credentials, LocalHost, PrivateAddress }
 
-/// Conservative URL gate. DNS resolution and redirect re-validation belong in the
-/// network adapter; callers must apply this policy to every redirect target too.
+/// Syntactic URL gate only. DNS resolution, address pinning, and redirect
+/// revalidation must be implemented by the transport adapter.
 pub fn validate_url(input: &str) -> Result<(), UrlPolicyError> {
     let (scheme, rest) = input.split_once("://").ok_or(UrlPolicyError::MissingScheme)?;
     if !matches!(scheme.to_ascii_lowercase().as_str(), "http" | "https") {
@@ -34,7 +34,7 @@ pub fn validate_url(input: &str) -> Result<(), UrlPolicyError> {
 mod tests {
  use super::*;
  #[test] fn accepts_public_http() { assert_eq!(validate_url("https://example.com/path"), Ok(())); }
- #[test] fn rejects_file_scheme() { assert_eq!(validate_url("file:///etc/passwd"), Err(UrlPolicyError::MissingHost)); }
+ #[test] fn rejects_file_scheme() { assert_eq!(validate_url("file:///etc/passwd"), Err(UrlPolicyError::UnsupportedScheme)); }
  #[test] fn rejects_localhost() { assert_eq!(validate_url("http://localhost:8080"), Err(UrlPolicyError::LocalHost)); }
  #[test] fn rejects_loopback_ip() { assert_eq!(validate_url("http://127.0.0.1"), Err(UrlPolicyError::PrivateAddress)); }
  #[test] fn rejects_userinfo() { assert_eq!(validate_url("https://user:pass@example.com"), Err(UrlPolicyError::Credentials)); }
