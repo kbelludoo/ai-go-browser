@@ -1,15 +1,37 @@
-# AI Go Browser — Rust Rewrite
+# AI Go Browser — Rust rewrite
 
-Incremental Rust implementation. Go on main remains the reference until parity and benchmarks are established.
+This is an incremental Rust implementation track. The Go implementation remains the
+behavioral reference until feature-by-feature parity is demonstrated. The Rust
+workspace currently contains **portable core contracts**, not a production browser.
 
-## First migration slice
-1. Port action/reference contracts and tests.
-2. Port semantic extraction and HTML parsing with fixture parity.
-3. Port URL/network policy and SSRF protections before transport integration.
-4. Port session lifecycle, memory/SQLite, MCP/API surfaces, and SDK compatibility.
-5. Compare Go and Rust outputs using existing fixtures and benchmarks.
+## Workspace
+- `crates/ai-go-browser-core`: action references, semantic snapshots, session and
+  memory primitives, URL syntax gate, and browser trait.
+- Workspace forbids unsafe Rust.
+- Network, JS engine, browser transport, persistence, MCP server, and SDK are not
+  wired into this initial core.
 
-## Validate
-Run from this directory: cargo test --workspace; cargo clippy --workspace --all-targets -- -D warnings
+## Development
+From this directory:
+```sh
+cargo fmt --all -- --check
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+```
 
-Do not claim parity until the Go test corpus has been ported and run against Rust.
+## Migration order
+1. Freeze public behavior in Go fixtures and tests.
+2. Define semantic snapshot/action-reference compatibility.
+3. Add transport with DNS/IP pinning, redirect checks, timeouts, size limits,
+   and SSRF controls.
+4. Implement HTML parsing and deterministic semantic extraction.
+5. Add browser actions, session persistence, memory, and JS execution adapter.
+6. Port MCP/API/SDK and compare end-to-end behavior against Go.
+7. Benchmark representative workloads and document parity gaps.
+
+## Security status
+The URL validator is a syntactic first gate only. It cannot defend against DNS
+rebinding or redirect-based SSRF. A production transport must resolve and validate
+all addresses, connect to the checked address, revalidate each redirect, and
+reject private/reserved destinations. Do not expose this scaffold as a usable
+headless browser until those controls and tests exist.
