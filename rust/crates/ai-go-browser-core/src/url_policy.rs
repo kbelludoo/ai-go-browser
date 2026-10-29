@@ -12,12 +12,12 @@ pub enum UrlPolicyError {
     PrivateAddress,
 }
 
-/// Validate URL syntax and obvious non-public destinations.
+/// Validate URL syntax, scheme, and credentials without judging the destination.
 ///
-/// This is only the first layer of SSRF protection. A network adapter must
-/// still resolve DNS, reject non-public answers, connect to a validated/pinned
-/// address, and revalidate every redirect target.
-pub fn validate_url(input: &str) -> Result<(), UrlPolicyError> {
+/// The transport pairs this with a [`crate::DestinationPolicy`] check so a
+/// policy (for example a test fixture allowlist) can decide which destinations
+/// are acceptable while syntax stays strict everywhere.
+pub fn validate_syntax(input: &str) -> Result<Url, UrlPolicyError> {
     if !input.contains(':') {
         return Err(UrlPolicyError::MissingScheme);
     }
@@ -36,7 +36,13 @@ pub fn validate_url(input: &str) -> Result<(), UrlPolicyError> {
     if parsed.username() != "" || parsed.password().is_some() {
         return Err(UrlPolicyError::Credentials);
     }
+    parsed.host().ok_or(UrlPolicyError::MissingHost)?;
 
+    Ok(parsed)
+}
+
+/// Reject local hostnames and non-public literal addresses.
+pub fn check_public_host(parsed: &Url) -> Result<(), UrlPolicyError> {
     let host = parsed.host().ok_or(UrlPolicyError::MissingHost)?;
     match host {
         url::Host::Domain(domain) => {
@@ -64,6 +70,15 @@ pub fn validate_url(input: &str) -> Result<(), UrlPolicyError> {
     Ok(())
 }
 
+/// Validate URL syntax and the default public-destination policy.
+///
+/// This is the syntactic entry point for callers that only need to vet input.
+/// Network adapters must additionally resolve DNS, reject non-public answers,
+/// pin the validated address, and revalidate every redirect target.
+pub fn validate_url(input: &str) -> Result<(), UrlPolicyError> {
+    check_public_host(&validate_syntax(input)?)
+}
+
 pub(crate) fn is_non_public_ipv4(ip: Ipv4Addr) -> bool {
     let [a, b, _, _] = ip.octets();
     ip.is_private()
@@ -88,9 +103,8 @@ pub(crate) fn is_non_public_ipv4(ip: Ipv4Addr) -> bool {
 
 pub(crate) fn is_non_public_ipv6(ip: Ipv6Addr) -> bool {
     let octets = ip.octets();
-    let is_ipv4_mapped = octets[..10].iter().all(|byte| *byte == 0)
-        && octets[10] == 0xff
-        && octets[11] == 0xff;
+    let is_ipv4_mapped =
+        octets[..10].iter().all(|byte| *byte == 0) && octets[10] == 0xff && octets[11] == 0xff;
 
     let first_segment = ip.segments()[0];
     let is_not_global_unicast = first_segment & 0xe000 != 0x2000;
@@ -125,7 +139,10 @@ mod tests {
 
     #[test]
     fn rejects_missing_scheme() {
-        assert_eq!(validate_url("example.com"), Err(UrlPolicyError::MissingScheme));
+        assert_eq!(
+            validate_url("example.com"),
+            Err(UrlPolicyError::MissingScheme)
+        );
     }
 
     #[test]
@@ -153,7 +170,11 @@ mod tests {
             "http://192.88.99.1",
             "http://224.0.0.1",
         ] {
-            assert_eq!(validate_url(url), Err(UrlPolicyError::PrivateAddress), "{url}");
+            assert_eq!(
+                validate_url(url),
+                Err(UrlPolicyError::PrivateAddress),
+                "{url}"
+            );
         }
     }
 
@@ -165,7 +186,11 @@ mod tests {
             "http://[fe80::1]/",
             "http://[::ffff:127.0.0.1]/",
         ] {
-            assert_eq!(validate_url(url), Err(UrlPolicyError::PrivateAddress), "{url}");
+            assert_eq!(
+                validate_url(url),
+                Err(UrlPolicyError::PrivateAddress),
+                "{url}"
+            );
         }
     }
 

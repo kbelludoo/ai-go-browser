@@ -1,13 +1,16 @@
 use std::{
+    fmt,
     net::{IpAddr, SocketAddr},
+    sync::Arc,
     time::Duration,
 };
 
-use reqwest::{header::LOCATION, redirect::Policy, Client, StatusCode};
+use reqwest::{Client, StatusCode, header::LOCATION, redirect::Policy};
 use url::{Host, Url};
 
-use crate::url_policy::{is_non_public_ipv4, is_non_public_ipv6};
-use crate::{validate_url, UrlPolicyError};
+use crate::UrlPolicyError;
+use crate::destination::{DestinationPolicy, HostResolver, PublicInternet, SystemResolver};
+use crate::url_policy::validate_syntax;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TransportError {
@@ -37,8 +40,7 @@ pub struct FetchedPage {
 
 impl FetchedPage {
     fn from_response(response: HttpResponse) -> Result<Self, TransportError> {
-        let html = std::str::from_utf8(&response.body)
-            .map_err(|_| TransportError::InvalidUtf8)?;
+        let html = std::str::from_utf8(&response.body).map_err(|_| TransportError::InvalidUtf8)?;
         let snapshot = crate::parse_semantic_html(response.final_url.clone(), html);
         Ok(Self { response, snapshot })
     }
@@ -50,11 +52,24 @@ impl FetchedPage {
 /// It deliberately disables environment proxies because a proxy would bypass
 /// the pinned destination-address guarantee. Deployments requiring a proxy
 /// should provide a separately reviewed, policy-enforcing proxy adapter.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SafeHttpTransport {
     timeout: Duration,
     max_response_bytes: usize,
     max_redirects: usize,
+    policy: Arc<dyn DestinationPolicy>,
+    resolver: Arc<dyn HostResolver>,
+}
+
+impl fmt::Debug for SafeHttpTransport {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SafeHttpTransport")
+            .field("timeout", &self.timeout)
+            .field("max_response_bytes", &self.max_response_bytes)
+            .field("max_redirects", &self.max_redirects)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for SafeHttpTransport {
@@ -64,8 +79,36 @@ impl Default for SafeHttpTransport {
 }
 
 impl SafeHttpTransport {
+    /// Build a transport with the production policy and the system resolver.
     pub fn new(timeout: Duration, max_response_bytes: usize, max_redirects: usize) -> Self {
-        Self { timeout, max_response_bytes, max_redirects }
+        Self::with_adapters(
+            timeout,
+            max_response_bytes,
+            max_redirects,
+            Arc::new(PublicInternet),
+            Arc::new(SystemResolver),
+        )
+    }
+
+    /// Build a transport with explicit destination policy and resolver seams.
+    ///
+    /// The policy is consulted for every hop URL and every resolved address, so
+    /// a substitute policy narrows the public default instead of bypassing the
+    /// chain. Intended for adapters and network integration tests.
+    pub fn with_adapters(
+        timeout: Duration,
+        max_response_bytes: usize,
+        max_redirects: usize,
+        policy: Arc<dyn DestinationPolicy>,
+        resolver: Arc<dyn HostResolver>,
+    ) -> Self {
+        Self {
+            timeout,
+            max_response_bytes,
+            max_redirects,
+            policy,
+            resolver,
+        }
     }
 
     /// Fetch a page and parse its response body as UTF-8 HTML.
@@ -75,14 +118,13 @@ impl SafeHttpTransport {
     }
 
     pub async fn get(&self, input: &str) -> Result<HttpResponse, TransportError> {
-        validate_url(input).map_err(TransportError::Policy)?;
-        let mut current = Url::parse(input).map_err(|_| {
-            TransportError::Policy(UrlPolicyError::MissingHost)
-        })?;
+        let mut current = validate_syntax(input).map_err(TransportError::Policy)?;
 
         for redirect_count in 0..=self.max_redirects {
-            validate_url(current.as_str()).map_err(TransportError::Policy)?;
-            let (host, addresses) = resolve_public_addresses(&current).await?;
+            self.policy
+                .check_url(&current)
+                .map_err(TransportError::Policy)?;
+            let (host, addresses) = self.resolve_addresses(&current).await?;
             let mut builder = Client::builder()
                 .redirect(Policy::none())
                 .timeout(self.timeout)
@@ -92,32 +134,50 @@ impl SafeHttpTransport {
                 builder = builder.resolve_to_addrs(&domain, &addresses);
             }
 
-            let client = builder.build().map_err(|e| TransportError::Request(e.to_string()))?;
-            let response = client.get(current.clone()).send().await
+            let client = builder
+                .build()
+                .map_err(|e| TransportError::Request(e.to_string()))?;
+            let response = client
+                .get(current.clone())
+                .send()
+                .await
                 .map_err(|e| TransportError::Request(e.to_string()))?;
 
             if is_redirect(response.status()) {
                 if redirect_count == self.max_redirects {
                     return Err(TransportError::TooManyRedirects);
                 }
-                let location = response.headers().get(LOCATION)
+                let location = response
+                    .headers()
+                    .get(LOCATION)
                     .and_then(|value| value.to_str().ok())
                     .ok_or(TransportError::InvalidRedirect)?;
-                current = resolve_redirect(&current, location)?;
+                current = resolve_redirect(self.policy.as_ref(), &current, location)?;
                 continue;
             }
 
             let status = response.status().as_u16();
-            let content_type = response.headers().get(reqwest::header::CONTENT_TYPE)
-                .and_then(|value| value.to_str().ok()).map(str::to_owned);
-            if response.content_length().is_some_and(|n| n > self.max_response_bytes as u64) {
-                return Err(TransportError::ResponseTooLarge { limit: self.max_response_bytes });
+            let content_type = response
+                .headers()
+                .get(reqwest::header::CONTENT_TYPE)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_owned);
+            if response
+                .content_length()
+                .is_some_and(|n| n > self.max_response_bytes as u64)
+            {
+                return Err(TransportError::ResponseTooLarge {
+                    limit: self.max_response_bytes,
+                });
             }
 
             let mut response = response;
             let mut body = Vec::new();
-            while let Some(chunk) = response.chunk().await
-                .map_err(|e| TransportError::Request(e.to_string()))? {
+            while let Some(chunk) = response
+                .chunk()
+                .await
+                .map_err(|e| TransportError::Request(e.to_string()))?
+            {
                 append_limited_body(&mut body, &chunk, self.max_response_bytes)?;
             }
 
@@ -134,9 +194,16 @@ impl SafeHttpTransport {
 }
 
 /// Resolve and validate a redirect destination before any subsequent DNS lookup or request.
-fn resolve_redirect(current: &Url, location: &str) -> Result<Url, TransportError> {
-    let target = current.join(location).map_err(|_| TransportError::InvalidRedirect)?;
-    validate_url(target.as_str()).map_err(TransportError::Policy)?;
+fn resolve_redirect(
+    policy: &dyn DestinationPolicy,
+    current: &Url,
+    location: &str,
+) -> Result<Url, TransportError> {
+    let target = current
+        .join(location)
+        .map_err(|_| TransportError::InvalidRedirect)?;
+    validate_syntax(target.as_str()).map_err(TransportError::Policy)?;
+    policy.check_url(&target).map_err(TransportError::Policy)?;
     Ok(target)
 }
 
@@ -157,40 +224,42 @@ fn is_redirect(status: StatusCode) -> bool {
     matches!(status.as_u16(), 301 | 302 | 303 | 307 | 308)
 }
 
-async fn resolve_public_addresses(url: &Url) -> Result<(Option<String>, Vec<SocketAddr>), TransportError> {
-    let port = url.port_or_known_default().ok_or(TransportError::InvalidRedirect)?;
-    match url.host().ok_or(TransportError::Policy(UrlPolicyError::MissingHost))? {
-        Host::Ipv4(ip) => {
-            if is_non_public_ipv4(ip) {
-                return Err(TransportError::Policy(UrlPolicyError::PrivateAddress));
+impl SafeHttpTransport {
+    /// Resolve the hop destination through the injected resolver and require the
+    /// policy to accept every answer, then pin exactly those answers.
+    async fn resolve_addresses(
+        &self,
+        url: &Url,
+    ) -> Result<(Option<String>, Vec<SocketAddr>), TransportError> {
+        let port = url
+            .port_or_known_default()
+            .ok_or(TransportError::InvalidRedirect)?;
+        let reject = |address: IpAddr| {
+            self.policy
+                .check_address(address)
+                .map_err(TransportError::Policy)
+        };
+        match url
+            .host()
+            .ok_or(TransportError::Policy(UrlPolicyError::MissingHost))?
+        {
+            Host::Ipv4(ip) => {
+                reject(IpAddr::V4(ip))?;
+                Ok((None, vec![SocketAddr::new(IpAddr::V4(ip), port)]))
             }
-            Ok((None, vec![SocketAddr::new(IpAddr::V4(ip), port)]))
-        }
-        Host::Ipv6(ip) => {
-            if is_non_public_ipv6(ip) {
-                return Err(TransportError::Policy(UrlPolicyError::PrivateAddress));
+            Host::Ipv6(ip) => {
+                reject(IpAddr::V6(ip))?;
+                Ok((None, vec![SocketAddr::new(IpAddr::V6(ip), port)]))
             }
-            Ok((None, vec![SocketAddr::new(IpAddr::V6(ip), port)]))
-        }
-        Host::Domain(domain) => {
-            let found = tokio::net::lookup_host((domain, port)).await
-                .map_err(|e| TransportError::Dns(e.to_string()))?
-                .collect::<Vec<_>>();
-            if found.is_empty() {
-                return Err(TransportError::Dns("hostname resolved to no addresses".into()));
-            }
-            // Fail closed if any answer is non-public; pin the remaining connection
-            // to the exact DNS answers checked above to prevent a second lookup race.
-            for address in &found {
-                let unsafe_address = match address.ip() {
-                    IpAddr::V4(ip) => is_non_public_ipv4(ip),
-                    IpAddr::V6(ip) => is_non_public_ipv6(ip),
-                };
-                if unsafe_address {
-                    return Err(TransportError::Policy(UrlPolicyError::PrivateAddress));
+            Host::Domain(domain) => {
+                let found = self.resolver.resolve(domain, port).await?;
+                // Fail closed if any answer is rejected; pin the remaining
+                // connection to the exact answers checked above.
+                for address in &found {
+                    reject(address.ip())?;
                 }
+                Ok((Some(domain.to_owned()), found))
             }
-            Ok((Some(domain.to_owned()), found))
         }
     }
 }
@@ -198,7 +267,6 @@ async fn resolve_public_addresses(url: &Url) -> Result<(Option<String>, Vec<Sock
 #[cfg(test)]
 mod tests {
     use super::*;
-
 
     #[tokio::test]
     async fn rejects_private_literal_before_opening_a_connection() {
@@ -260,14 +328,21 @@ mod tests {
             content_type: Some("text/html".into()),
             body: vec![0xff, 0xfe],
         };
-        assert_eq!(FetchedPage::from_response(response), Err(TransportError::InvalidUtf8));
+        assert_eq!(
+            FetchedPage::from_response(response),
+            Err(TransportError::InvalidUtf8)
+        );
     }
 
     #[test]
     fn redirect_resolution_rejects_private_destinations_before_fetching() {
         let current = Url::parse("https://example.com/start").unwrap();
-        for location in ["http://127.0.0.1/admin", "http://localhost/admin", "file:///etc/passwd"] {
-            let error = resolve_redirect(&current, location).unwrap_err();
+        for location in [
+            "http://127.0.0.1/admin",
+            "http://localhost/admin",
+            "file:///etc/passwd",
+        ] {
+            let error = resolve_redirect(&PublicInternet, &current, location).unwrap_err();
             assert!(
                 matches!(error, TransportError::Policy(_)),
                 "expected policy rejection for {location}, got {error:?}"
@@ -278,7 +353,7 @@ mod tests {
     #[test]
     fn redirect_resolution_supports_relative_locations() {
         let current = Url::parse("https://example.com/a/page").unwrap();
-        let target = resolve_redirect(&current, "../next").unwrap();
+        let target = resolve_redirect(&PublicInternet, &current, "../next").unwrap();
         assert_eq!(target.as_str(), "https://example.com/next");
     }
 
