@@ -203,7 +203,8 @@ agent_execute_line :: proc(line: string, session: ^Fetch_Session, saved: ^Fetch_
 			delete(oldest, runtime.default_context().allocator)
 			ordered_remove(history, 0)
 		}
-		append(history, strings.clone(saved.effective_url, runtime.default_context().allocator))
+		url_copy := strings.clone(saved.effective_url, runtime.default_context().allocator)
+		append(history, url_copy)
 	}
 	agent_free_saved(saved)
 	saved^ = next
@@ -220,7 +221,7 @@ agent_run :: proc(allow_private: bool) {
 	defer fetch_session_close(&session)
 	current: Fetch_Result
 	defer agent_free_saved(&current)
-	history: [dynamic]string
+	history := make([dynamic]string, runtime.default_context().allocator)
 	defer {
 		for h in history {
 			delete(h, runtime.default_context().allocator)
