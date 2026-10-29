@@ -11,7 +11,7 @@ mod url_policy;
 
 pub use action::ActionRef;
 pub use actions::BrowserAction;
-pub use browser::{Browser, BrowserError};
+pub use browser::{Browser, BrowserError, BrowserOutput};
 pub use memory::{MemoryEntry, MemoryStore};
 pub use parser::parse_semantic_html;
 pub use semantic::{SemanticElement, SemanticSnapshot};
