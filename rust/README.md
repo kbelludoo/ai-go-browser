@@ -10,10 +10,10 @@ a production browser.
   and memory primitives, URL policy checks, bounded HTTP transport with DNS validation
   and redirect revalidation, and an asynchronous `HttpSnapshotBrowser` adapter.
 - Workspace forbids unsafe Rust.
-- `HttpSnapshotBrowser` fetches and parses static HTML. It supports text extraction and
-  checking text already present in the fetched page. It intentionally rejects click,
-  fill, select, submit, and history actions because no live DOM or JavaScript engine is
-  connected yet.
+- `HttpSnapshotBrowser` fetches and parses static HTML, retains a navigation history,
+  and supports back/forward/reload by refetching stored URLs, text extraction, and checking
+  text already present in the fetched page. It intentionally rejects click, fill, select,
+  and submit because no live DOM or JavaScript engine is connected yet.
 
 ## Development
 From this directory:
