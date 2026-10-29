@@ -75,9 +75,10 @@ impl SafeHttpTransport {
     }
 
     pub async fn get(&self, input: &str) -> Result<HttpResponse, TransportError> {
-        let mut current = Url::parse(input).map_err(|_| TransportError::Policy(
-            UrlPolicyError::MissingHost
-        ))?;
+        validate_url(input).map_err(TransportError::Policy)?;
+        let mut current = Url::parse(input).map_err(|_| {
+            TransportError::Policy(UrlPolicyError::MissingHost)
+        })?;
 
         for redirect_count in 0..=self.max_redirects {
             validate_url(current.as_str()).map_err(TransportError::Policy)?;
@@ -180,6 +181,45 @@ async fn resolve_public_addresses(url: &Url) -> Result<(Option<String>, Vec<Sock
 #[cfg(test)]
 mod tests {
     use super::*;
+
+
+    #[tokio::test]
+    async fn rejects_private_literal_before_opening_a_connection() {
+        for url in [
+            "http://127.0.0.1:1/",
+            "http://10.0.0.1:1/",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://[::1]:1/",
+        ] {
+            let error = SafeHttpTransport::default().get(url).await.unwrap_err();
+            assert_eq!(
+                error,
+                TransportError::Policy(UrlPolicyError::PrivateAddress),
+                "{url}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn rejects_localhost_before_dns_resolution() {
+        let error = SafeHttpTransport::default()
+            .get("http://localhost:1/")
+            .await
+            .unwrap_err();
+        assert_eq!(error, TransportError::Policy(UrlPolicyError::LocalHost));
+    }
+
+    #[tokio::test]
+    async fn rejects_non_http_schemes_before_network_access() {
+        let error = SafeHttpTransport::default()
+            .get("file:///etc/passwd")
+            .await
+            .unwrap_err();
+        assert_eq!(
+            error,
+            TransportError::Policy(UrlPolicyError::UnsupportedScheme)
+        );
+    }
 
     #[test]
     fn parses_response_body_into_semantic_snapshot() {
