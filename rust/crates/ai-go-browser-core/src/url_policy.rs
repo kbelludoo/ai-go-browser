@@ -67,6 +67,7 @@ pub fn validate_url(input: &str) -> Result<(), UrlPolicyError> {
 pub(crate) fn is_non_public_ipv4(ip: Ipv4Addr) -> bool {
     let [a, b, _, _] = ip.octets();
     ip.is_private()
+        || a == 0
         || ip.is_loopback()
         || ip.is_link_local()
         || ip.is_unspecified()
@@ -79,6 +80,7 @@ pub(crate) fn is_non_public_ipv4(ip: Ipv4Addr) -> bool {
         || (a == 192 && b == 0)
         || (a == 192 && b == 0 && ip.octets()[2] == 2)
         || (a == 192 && b == 0 && ip.octets()[2] == 0)
+        || (a == 192 && b == 88 && ip.octets()[2] == 99)
         || (a == 198 && b == 51 && ip.octets()[2] == 100)
         || (a == 203 && b == 0 && ip.octets()[2] == 113)
         || a >= 240
@@ -142,11 +144,13 @@ mod tests {
     fn rejects_loopback_and_private_ips() {
         for url in [
             "http://127.0.0.1",
+            "http://0.1.2.3",
             "http://10.1.2.3",
             "http://169.254.1.1",
             "http://100.64.0.1",
             "http://192.0.2.1",
             "http://198.18.0.1",
+            "http://192.88.99.1",
             "http://224.0.0.1",
         ] {
             assert_eq!(validate_url(url), Err(UrlPolicyError::PrivateAddress), "{url}");
