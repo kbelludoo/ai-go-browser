@@ -15,8 +15,10 @@ import vmem "core:mem/virtual"
 //
 // Input (one JSON object per line):
 //   {"cmd":"open","url":"https://example.com"}
-//   {"cmd":"follow","ref":"l1"}
+//   {"cmd":"follow","ref":"l1"} (or {"cmd":"click","ref":"l1"})
 //   {"cmd":"submit","ref":"f1","fields":["q=test"]}
+//   {"cmd":"query","selector":"main a"}
+//   {"cmd":"back"}
 //   {"cmd":"snapshot"}
 //   {"cmd":"quit"}
 // Responses are *one JSON object* per line; no banners or incidental logs.
@@ -80,7 +82,7 @@ agent_parse_ref :: proc(value: string, prefix: byte) -> int {
 	return n
 }
 
-agent_execute_line :: proc(line: string, session: ^Fetch_Session, saved: ^Fetch_Result) -> bool {
+agent_execute_line :: proc(line: string, session: ^Fetch_Session, saved: ^Fetch_Result, history: ^[dynamic]string) -> bool {
 	arena: vmem.Arena
 	if vmem.arena_init_growing(&arena) != nil {
 		fmt.println("{\"ok\":false,\"error\":\"arena unavailable\"}")
@@ -106,6 +108,27 @@ agent_execute_line :: proc(line: string, session: ^Fetch_Session, saved: ^Fetch_
 		agent_emit_query(matches,query_err)
 		return true
 	}
+	if cmd.cmd == "back" {
+		if len(history^) == 0 {
+			agent_emit(false, "no history", saved)
+			return true
+		}
+		prev_url := pop(history)
+		defer delete(prev_url, runtime.default_context().allocator)
+		arena_allocator := context.allocator
+		context.allocator = runtime.default_context().allocator
+		next := fetch_session_get(session, prev_url)
+		context.allocator = arena_allocator
+		if next.error != "" {
+			agent_emit(false, next.error, saved)
+			agent_free_saved(&next)
+			return true
+		}
+		agent_free_saved(saved)
+		saved^ = next
+		agent_emit(true, "", saved)
+		return true
+	}
 	if cmd.cmd == "snapshot" {
 		if saved.effective_url == "" {
 			agent_emit(false, "no page opened", saved)
@@ -118,7 +141,7 @@ agent_execute_line :: proc(line: string, session: ^Fetch_Session, saved: ^Fetch_
 	switch cmd.cmd {
 	case "open":
 		target = cmd.url
-	case "follow":
+	case "follow", "click":
 		if saved.effective_url == "" {
 			agent_emit(false, "no page opened", saved)
 			return true
@@ -174,6 +197,14 @@ agent_execute_line :: proc(line: string, session: ^Fetch_Session, saved: ^Fetch_
 		agent_free_saved(&next)
 		return true
 	}
+	if saved.effective_url != "" && saved.effective_url != next.effective_url {
+		if len(history^) >= 32 {
+			oldest := history^[0]
+			delete(oldest, runtime.default_context().allocator)
+			ordered_remove(history, 0)
+		}
+		append(history, strings.clone(saved.effective_url, runtime.default_context().allocator))
+	}
 	agent_free_saved(saved)
 	saved^ = next
 	agent_emit(true, "", saved)
@@ -189,6 +220,13 @@ agent_run :: proc(allow_private: bool) {
 	defer fetch_session_close(&session)
 	current: Fetch_Result
 	defer agent_free_saved(&current)
+	history: [dynamic]string
+	defer {
+		for h in history {
+			delete(h, runtime.default_context().allocator)
+		}
+		delete(history)
+	}
 
 	scanner: bufio.Scanner
 	bufio.scanner_init(&scanner, os.to_reader(os.stdin))
@@ -196,7 +234,7 @@ agent_run :: proc(allow_private: bool) {
 	for bufio.scan(&scanner) {
 		line := strings.trim_space(bufio.scanner_text(&scanner))
 		if line == "" {continue}
-		if !agent_execute_line(line, &session, &current) {
+		if !agent_execute_line(line, &session, &current, &history) {
 			break
 		}
 	}

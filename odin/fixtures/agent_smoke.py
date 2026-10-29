@@ -38,6 +38,12 @@ def main():
         linked = send({"cmd": "follow", "ref": "l1"})
         assert linked["ok"] and linked["page"]["title"] == "Cookie kept", linked
 
+        back_step = send({"cmd": "back"})
+        assert back_step["ok"] and back_step["page"]["title"] == "Session established", back_step
+
+        clicked = send({"cmd": "click", "ref": "l1"})
+        assert clicked["ok"] and clicked["page"]["title"] == "Cookie kept", clicked
+
         start = send({"cmd": "open", "url": base + "/landing"})
         assert start["ok"] and start["page"]["title"] == "Session established", start
 
@@ -91,7 +97,7 @@ def main():
         p.stdin.close()
         assert p.wait(timeout=10) == 0, p.stderr.read()
 
-    print("JSONL agent: cookies, refs, forms, snapshot and errors PASS")
+    print("JSONL agent: cookies, refs, forms, snapshot, back, click and errors PASS")
 
 
 if __name__ == "__main__":

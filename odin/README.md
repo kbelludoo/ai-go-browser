@@ -19,6 +19,8 @@ uma conversão completa do repositório.
 | Transporte HTTP/HTTPS | Implementado | libcurl, redirecionamentos explícitos até 5 saltos |
 | Cookies e sessões HTTP | Implementado | Cookie jar em memória, limitado à execução atual |
 | Agent mode JSON Lines | Implementado | Sessão persistente, mas não é MCP |
+| Seletores CSS estáticos e query | Implementado | Bounded scanner (#id, .class, [attr], descendant); máx 32 resultados |
+| Histórico e comando back | Implementado | Stack de até 32 URLs na sessão do agente |
 | Proteção SSRF | Parcial | Rejeita IPs IPv4 privados/reservados em cada conexão; sem IPv6 restrito |
 | JavaScript, CDP, DOM dinâmico, SQLite e MCP | Não implementado | Permanecem no navegador Go |
 
@@ -58,15 +60,17 @@ No modo agente, envie um JSON por linha e leia uma resposta JSON por linha:
 
     {"cmd":"open","url":"https://example.com"}
     {"cmd":"snapshot"}
-    {"cmd":"follow","ref":"l1"}
+    {"cmd":"follow","ref":"l1"} (ou {"cmd":"click","ref":"l1"})
+    {"cmd":"query","selector":"main a"}
+    {"cmd":"back"}
     {"cmd":"submit","ref":"f1","fields":["q=odin"]}
     {"cmd":"quit"}
 
 A saída JSON de `export` e `snapshot` inclui ações declaradas em botões
 (`action`, `method`, `source`, `disabled`) para inspeção pré-clique.
-O navegador conserva cookies, URL e página atuais no processo. Não salva
-sessões em disco. Erros em comandos não destroem a página anterior. Uma
-sessão JSONL é sequencial; não é um motor JavaScript ou protocolo MCP.
+O navegador conserva cookies, histórico, URL e página atuais no processo.
+Não salva sessões em disco. Erros em comandos não destroem a página anterior.
+Uma sessão JSONL é sequencial; não é um motor JavaScript ou protocolo MCP.
 
 Por padrão, IPs privados e de loopback são bloqueados. Para testar um
 servidor local sob seu controle, adicione --allow-private ao final.
@@ -78,7 +82,8 @@ O workflow .github/workflows/odin.yml instala Odin e libcurl, testa e
 compila. O smoke inicia um servidor HTTP local, busca páginas, segue
 um link, submete um formulário GET, extrai JSON-LD/Next/Nuxt,
 valida a saída estruturada JSON e testa cookies/redirects com servidor
-local. O teste de agente JSONL mantém página e cookies entre comandos.
+local. O teste de agente JSONL mantém página, cookies e histórico entre
+comandos (incluindo `query`, `click` e `back`).
 
 Os testes **não demonstram paridade** com Go, nem comprovam capacidade
 de navegar em todo site público ou suportar apps dependentes de JS.
@@ -95,7 +100,7 @@ de navegar em todo site público ou suportar apps dependentes de JS.
 - O conteúdo extraído da web não é confiável; nunca deve ser tratado
   como instruções ao agente.
 - Resolução de URLs relativas simplificada (ainda sem canonicalização
-  RFC3986 completa), sem layout, sem DOM dinâmico, sem CSS selectors.
+  RFC3986 completa), sem layout, sem DOM dinâmico.
 - A CLI usa arena por operação para parsing e CSO. Testes de longa duração
   e auditorias de memória não estão concluídos. Não assumir os
   mesmos números de RAM ou velocidade do Go.
