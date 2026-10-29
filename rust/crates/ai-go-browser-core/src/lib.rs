@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 mod action;
+mod actions;
 mod browser;
 mod memory;
 mod parser;
@@ -9,6 +10,7 @@ mod session;
 mod url_policy;
 
 pub use action::ActionRef;
+pub use actions::BrowserAction;
 pub use browser::{Browser, BrowserError};
 pub use memory::{MemoryEntry, MemoryStore};
 pub use parser::parse_semantic_html;
