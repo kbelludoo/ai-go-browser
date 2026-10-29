@@ -1,0 +1,33 @@
+{
+  "fixture": "tables.html",
+  "url": "https://example.test/tables",
+  "title": "Report",
+  "headings": [
+    {
+      "level": 1,
+      "text": "Quarterly report"
+    },
+    {
+      "level": 3,
+      "text": "Revenue"
+    },
+    {
+      "level": 3,
+      "text": "Notes"
+    }
+  ],
+  "links": [
+    {
+      "ref": "l1",
+      "label": "a link",
+      "url": "https://example.test/detail"
+    },
+    {
+      "ref": "l2",
+      "label": "Download CSV",
+      "url": "https://example.test/download/report.csv"
+    }
+  ],
+  "buttons": [],
+  "inputs": []
+}

@@ -1,0 +1,59 @@
+{
+  "fixture": "basic.html",
+  "url": "https://example.test/basic",
+  "title": "Widget Store",
+  "headings": [
+    {
+      "level": 1,
+      "text": "Widget Store"
+    },
+    {
+      "level": 2,
+      "text": "Featured"
+    }
+  ],
+  "links": [
+    {
+      "ref": "l1",
+      "label": "Catalog",
+      "url": "https://example.test/catalog"
+    },
+    {
+      "ref": "l2",
+      "label": "Help",
+      "url": "https://example.test/help"
+    },
+    {
+      "ref": "l3",
+      "label": "Jump to section",
+      "url": "https://example.test/basic#section"
+    }
+  ],
+  "buttons": [
+    {
+      "ref": "b1",
+      "label": "Search",
+      "type": "button",
+      "action": {
+        "ref": "b1",
+        "label": "Search",
+        "tag": "button"
+      }
+    },
+    {
+      "ref": "b2",
+      "label": "Go",
+      "type": "submit",
+      "form_ref": "f1",
+      "action": {
+        "ref": "b2",
+        "label": "Go",
+        "tag": "button",
+        "form_method": "GET",
+        "form_action": "https://example.test/search",
+        "action_summary": "GET https://example.test/search"
+      }
+    }
+  ],
+  "inputs": []
+}

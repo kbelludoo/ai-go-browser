@@ -1,0 +1,40 @@
+{
+  "fixture": "spa.html",
+  "url": "https://example.test/spa",
+  "title": "Hydrated app",
+  "headings": [
+    {
+      "level": 1,
+      "text": "Dashboard"
+    },
+    {
+      "level": 2,
+      "text": "Recent activity"
+    }
+  ],
+  "links": [
+    {
+      "ref": "l1",
+      "label": "Dashboard",
+      "url": "https://example.test/dashboard"
+    },
+    {
+      "ref": "l2",
+      "label": "Settings",
+      "url": "https://example.test/settings"
+    }
+  ],
+  "buttons": [
+    {
+      "ref": "b1",
+      "label": "Refresh",
+      "type": "button",
+      "action": {
+        "ref": "b1",
+        "label": "Refresh",
+        "tag": "button"
+      }
+    }
+  ],
+  "inputs": []
+}
