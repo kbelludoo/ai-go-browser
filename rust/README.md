@@ -6,8 +6,8 @@ workspace currently contains **portable core contracts**, not a production brows
 
 ## Workspace
 - `crates/ai-go-browser-core`: action references and command types, semantic snapshots,
-  initial HTML actionable-element extraction, in-memory session and memory primitives,
-  URL syntax gate, and browser adapter trait/output.
+  initial HTML actionable-element extraction with explicit-label and ARIA name resolution, in-memory session and memory primitives,
+  URL syntax gate with reserved-address checks, and browser adapter trait/output.
 - Workspace forbids unsafe Rust.
 - Network transport, JS engine, persistent storage, MCP server, and SDK are not
   wired into this initial core.
@@ -33,8 +33,11 @@ cargo clippy --workspace --all-targets -- -D warnings
 7. Benchmark representative workloads and document parity gaps.
 
 ## Security status
-The URL validator is a syntactic first gate only. It cannot defend against DNS
-rebinding or redirect-based SSRF. A production transport must resolve and validate
-all addresses, connect to the checked address, revalidate each redirect, and
-reject private/reserved destinations. Do not expose this scaffold as a usable
+The URL validator parses URLs using the `url` crate and rejects credentials,
+local hostnames, and several private, reserved, and special-use IP ranges. It is
+still only a syntactic first gate: it cannot defend against DNS rebinding or
+redirect-based SSRF. A production transport must resolve and validate all DNS
+answers, connect to a checked/pinned address, revalidate each redirect, and reject
+private/reserved destinations. Domain classification alone is not proof that a
+resolved address is public. Do not expose this scaffold as a usable
 headless browser until those controls and tests exist.
