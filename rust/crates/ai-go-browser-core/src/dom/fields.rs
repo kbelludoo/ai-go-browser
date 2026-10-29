@@ -157,3 +157,56 @@ impl Document {
         String::new()
     }
 }
+
+/// Go `formParams`: successful controls in document order, with repeated select
+/// values and a named submitter. Disabled and unchecked controls do not
+/// contribute.
+pub fn form_params(form: &Form, submitter: Option<&Button>) -> Vec<(String, String)> {
+    let mut params = Vec::new();
+    for field in &form.fields {
+        if field.disabled
+            || field.name.is_empty()
+            || matches!(
+                field.kind.as_str(),
+                "file" | "button" | "submit" | "reset" | "image"
+            )
+        {
+            continue;
+        }
+        if matches!(field.kind.as_str(), "checkbox" | "radio") && !field.checked {
+            continue;
+        }
+        let name = normalize_form_newlines(&field.name);
+        if field.kind == "select" {
+            for choice in &field.options {
+                if choice.selected && !choice.disabled {
+                    params.push((name.clone(), normalize_form_newlines(&choice.value)));
+                }
+            }
+            continue;
+        }
+        params.push((name, normalize_form_newlines(&field.value)));
+    }
+    if let Some(button) = submitter
+        && !button.disabled
+        && button.kind == "submit"
+        && !button.name.is_empty()
+    {
+        params.push((
+            normalize_form_newlines(&button.name),
+            normalize_form_newlines(&button.value),
+        ));
+    }
+    params
+}
+
+/// URL-encoded HTML submissions normalize lone CR/LF in names and values.
+fn normalize_form_newlines(value: &str) -> String {
+    if !value.contains(['\r', '\n']) {
+        return value.to_owned();
+    }
+    value
+        .replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .replace('\n', "\r\n")
+}

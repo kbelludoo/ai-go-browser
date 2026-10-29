@@ -39,14 +39,20 @@ pub struct SemanticSnapshot {
 
 impl SemanticSnapshot {
     pub fn actionable(&self) -> impl Iterator<Item = &SemanticElement> {
-        self.elements.iter().filter(|element| element.action.is_some())
+        self.elements
+            .iter()
+            .filter(|element| element.action.is_some())
     }
 
     /// Resolve an action reference against this exact snapshot. Adapters should
     /// resolve immediately before acting so stale references cannot silently drift.
     pub fn find_action(&self, id: &str) -> Option<&SemanticElement> {
-        self.actionable()
-            .find(|element| element.action.as_ref().is_some_and(|action| action.id == id))
+        self.actionable().find(|element| {
+            element
+                .action
+                .as_ref()
+                .is_some_and(|action| action.id == id)
+        })
     }
 }
 

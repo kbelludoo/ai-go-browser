@@ -145,8 +145,15 @@ pub fn send_redirect(stream: &mut TcpStream, location: &str) {
 /// Stream a body with `Transfer-Encoding: chunked` and no content length, so a
 /// size cap can only be enforced while reading.
 pub fn send_chunked(stream: &mut TcpStream, chunks: &[&[u8]]) {
-    let _ = stream
-        .write_all(b"HTTP/1.1 200 OK\r\nConnection: close\r\nTransfer-Encoding: chunked\r\n\r\n");
+    send_chunked_typed(stream, "text/plain", chunks);
+}
+
+/// Chunked variant that declares a media type, so the HTML cap can be tested.
+pub fn send_chunked_typed(stream: &mut TcpStream, content_type: &str, chunks: &[&[u8]]) {
+    let head = format!(
+        "HTTP/1.1 200 OK\r\nConnection: close\r\nTransfer-Encoding: chunked\r\nContent-Type: {content_type}\r\n\r\n"
+    );
+    let _ = stream.write_all(head.as_bytes());
     for chunk in chunks {
         let _ = stream.write_all(format!("{:x}\r\n", chunk.len()).as_bytes());
         let _ = stream.write_all(chunk);

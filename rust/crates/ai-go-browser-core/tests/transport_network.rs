@@ -20,7 +20,7 @@ use ai_go_browser_core::{
     PublicInternet, SafeHttpTransport, SystemResolver, TransportError, UrlPolicyError,
 };
 use support::{
-    AllowOrigin, RebindingResolver, StaticResolver, TestServer, send_chunked, send_redirect,
+    AllowOrigin, RebindingResolver, StaticResolver, TestServer, send_chunked_typed, send_redirect,
     send_response,
 };
 
@@ -244,7 +244,12 @@ async fn silent_server_times_out() {
 #[tokio::test]
 async fn declared_length_over_the_cap_is_rejected() {
     let server = TestServer::spawn(|_, stream| {
-        send_response(stream, "200 OK", &[], &[b'x'; CAP * 4]);
+        send_response(
+            stream,
+            "200 OK",
+            &[("Content-Type", "text/html")],
+            &[b'x'; CAP * 4],
+        );
     });
 
     let error = transport_for(server.origin(), Duration::from_secs(5), CAP)
@@ -260,7 +265,7 @@ async fn declared_length_over_the_cap_is_rejected() {
 async fn streamed_body_over_the_cap_is_rejected() {
     let chunk = [b'x'; CAP / 2];
     let server = TestServer::spawn(move |_, stream| {
-        send_chunked(stream, &[&chunk, &chunk, &chunk]);
+        send_chunked_typed(stream, "text/html", &[&chunk, &chunk, &chunk]);
     });
 
     let error = transport_for(server.origin(), Duration::from_secs(5), CAP)
@@ -276,7 +281,7 @@ async fn streamed_body_over_the_cap_is_rejected() {
 async fn body_at_the_cap_is_accepted() {
     let chunk = [b'x'; CAP / 2];
     let server = TestServer::spawn(move |_, stream| {
-        send_chunked(stream, &[&chunk, &chunk]);
+        send_chunked_typed(stream, "text/html", &[&chunk, &chunk]);
     });
 
     let response = transport_for(server.origin(), Duration::from_secs(5), CAP)

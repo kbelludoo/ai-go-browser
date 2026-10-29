@@ -275,5 +275,7 @@ mod node;
 mod page;
 mod text;
 
+pub use fields::form_params;
+
 #[cfg(test)]
 mod tests;

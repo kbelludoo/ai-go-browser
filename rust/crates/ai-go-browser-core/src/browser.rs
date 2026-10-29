@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use crate::{BrowserAction, FetchedPage, SafeHttpTransport, SemanticSnapshot, TransportError, UrlPolicyError};
+use crate::{
+    BrowserAction, FetchedPage, SafeHttpTransport, SemanticSnapshot, TransportError, UrlPolicyError,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BrowserError {
@@ -72,18 +74,23 @@ impl HttpSnapshotBrowser {
         }
     }
 
-    async fn fetch_static_page(&self, url: &str) -> Result<(SemanticSnapshot, String), BrowserError> {
-        let page = self.fetcher.get_page(url).await.map_err(|error| {
-            match error {
+    async fn fetch_static_page(
+        &self,
+        url: &str,
+    ) -> Result<(SemanticSnapshot, String), BrowserError> {
+        let page = self
+            .fetcher
+            .get_page(url)
+            .await
+            .map_err(|error| match error {
                 TransportError::Policy(policy) => BrowserError::Policy(policy),
                 other => BrowserError::Transport(other),
-            }
-        })?;
-        let html = std::str::from_utf8(&page.response.body)
-            .map_err(|error| BrowserError::Navigation(error.to_string()))?;
+            })?;
+        let html = page.decoded.text.as_str();
         let document = scraper::Html::parse_document(html);
         let body_selector = scraper::Selector::parse("body").expect("static selector");
-        let text = document.select(&body_selector)
+        let text = document
+            .select(&body_selector)
             .flat_map(|node| node.text())
             .collect::<Vec<_>>()
             .join(" ")
@@ -94,7 +101,9 @@ impl HttpSnapshotBrowser {
     }
 
     async fn load_history_entry(&mut self, index: usize) -> Result<SemanticSnapshot, BrowserError> {
-        let url = self.history.get(index)
+        let url = self
+            .history
+            .get(index)
             .cloned()
             .ok_or_else(|| BrowserError::Navigation("history entry does not exist".into()))?;
         let (snapshot, text) = self.fetch_static_page(&url).await?;
@@ -123,7 +132,9 @@ impl Browser for HttpSnapshotBrowser {
 
     async fn perform(&mut self, action: BrowserAction) -> Result<BrowserOutput, BrowserError> {
         if let Some(target) = action.target() {
-            let found = self.snapshot.as_ref()
+            let found = self
+                .snapshot
+                .as_ref()
                 .and_then(|snapshot| snapshot.find_action(&target.id));
             if found.is_none() {
                 return Err(BrowserError::ActionTargetNotFound(target.id.clone()));
@@ -141,9 +152,14 @@ impl Browser for HttpSnapshotBrowser {
             BrowserAction::WaitForText { text } => {
                 let current = self.current_text.as_deref().unwrap_or_default();
                 if current.contains(&text) {
-                    Ok(BrowserOutput { snapshot: self.snapshot.clone(), text: Some(current.to_owned()) })
+                    Ok(BrowserOutput {
+                        snapshot: self.snapshot.clone(),
+                        text: Some(current.to_owned()),
+                    })
                 } else {
-                    Err(BrowserError::Navigation(format!("text not found in static snapshot: {text}")))
+                    Err(BrowserError::Navigation(format!(
+                        "text not found in static snapshot: {text}"
+                    )))
                 }
             }
             BrowserAction::Click { .. }
@@ -153,31 +169,44 @@ impl Browser for HttpSnapshotBrowser {
                 "mutating actions require a JavaScript-capable browser engine".into(),
             )),
             BrowserAction::Back => {
-                let index = self.history_index.ok_or_else(|| {
-                    BrowserError::Navigation("no page in history".into())
-                })?;
+                let index = self
+                    .history_index
+                    .ok_or_else(|| BrowserError::Navigation("no page in history".into()))?;
                 if index == 0 {
-                    return Err(BrowserError::Navigation("already at the first history entry".into()));
+                    return Err(BrowserError::Navigation(
+                        "already at the first history entry".into(),
+                    ));
                 }
                 let snapshot = self.load_history_entry(index - 1).await?;
-                Ok(BrowserOutput { snapshot: Some(snapshot), text: self.current_text.clone() })
+                Ok(BrowserOutput {
+                    snapshot: Some(snapshot),
+                    text: self.current_text.clone(),
+                })
             }
             BrowserAction::Forward => {
-                let index = self.history_index.ok_or_else(|| {
-                    BrowserError::Navigation("no page in history".into())
-                })?;
+                let index = self
+                    .history_index
+                    .ok_or_else(|| BrowserError::Navigation("no page in history".into()))?;
                 if index + 1 >= self.history.len() {
-                    return Err(BrowserError::Navigation("already at the latest history entry".into()));
+                    return Err(BrowserError::Navigation(
+                        "already at the latest history entry".into(),
+                    ));
                 }
                 let snapshot = self.load_history_entry(index + 1).await?;
-                Ok(BrowserOutput { snapshot: Some(snapshot), text: self.current_text.clone() })
+                Ok(BrowserOutput {
+                    snapshot: Some(snapshot),
+                    text: self.current_text.clone(),
+                })
             }
             BrowserAction::Reload => {
-                let index = self.history_index.ok_or_else(|| {
-                    BrowserError::Navigation("no page to reload".into())
-                })?;
+                let index = self
+                    .history_index
+                    .ok_or_else(|| BrowserError::Navigation("no page to reload".into()))?;
                 let snapshot = self.load_history_entry(index).await?;
-                Ok(BrowserOutput { snapshot: Some(snapshot), text: self.current_text.clone() })
+                Ok(BrowserOutput {
+                    snapshot: Some(snapshot),
+                    text: self.current_text.clone(),
+                })
             }
         }
     }
@@ -203,19 +232,26 @@ mod tests {
     impl PageFetcher for MockFetcher {
         async fn get_page(&self, url: &str) -> Result<FetchedPage, TransportError> {
             self.requests.lock().unwrap().push(url.to_owned());
-            self.pages.get(url).cloned().ok_or_else(|| {
-                TransportError::Request(format!("unexpected mock URL: {url}"))
-            })
+            self.pages
+                .get(url)
+                .cloned()
+                .ok_or_else(|| TransportError::Request(format!("unexpected mock URL: {url}")))
         }
     }
 
     fn mock_page(url: &str, title: &str, body: &str) -> FetchedPage {
+        let html = format!("<html><head><title>{title}</title></head><body>{body}</body></html>");
         FetchedPage {
-            response: crate::HttpResponse {
-                final_url: url.to_owned(),
-                status: 200,
-                content_type: Some("text/html".into()),
-                body: format!("<html><head><title>{title}</title></head><body>{body}</body></html>").into_bytes(),
+            response: crate::HttpResponse::new(
+                url,
+                200,
+                Some("text/html".into()),
+                html.clone().into_bytes(),
+            ),
+            decoded: crate::DecodedBody {
+                text: html,
+                encoding: "utf-8".into(),
+                bom_bytes: 0,
             },
             snapshot: SemanticSnapshot {
                 url: url.to_owned(),
@@ -228,15 +264,23 @@ mod tests {
     fn mock_browser() -> (HttpSnapshotBrowser, Arc<MockFetcher>) {
         let fetcher = Arc::new(MockFetcher {
             pages: HashMap::from([
-                ("https://example.com/a".into(), mock_page("https://example.com/a", "A", "Alpha")),
-                ("https://example.com/b".into(), mock_page("https://example.com/b", "B", "Beta")),
-                ("https://example.com/c".into(), mock_page("https://example.com/c", "C", "Gamma")),
+                (
+                    "https://example.com/a".into(),
+                    mock_page("https://example.com/a", "A", "Alpha"),
+                ),
+                (
+                    "https://example.com/b".into(),
+                    mock_page("https://example.com/b", "B", "Beta"),
+                ),
+                (
+                    "https://example.com/c".into(),
+                    mock_page("https://example.com/c", "C", "Gamma"),
+                ),
             ]),
             requests: Mutex::new(Vec::new()),
         });
         (HttpSnapshotBrowser::with_fetcher(fetcher.clone()), fetcher)
     }
-
 
     #[tokio::test]
     async fn history_back_forward_reload_and_branch_truncation_work() {
@@ -309,9 +353,16 @@ mod tests {
         };
 
         let forged = ActionRef::new("b1", "Delete").unwrap();
-        let result = browser.perform(BrowserAction::Click { target: forged }).await;
+        let result = browser
+            .perform(BrowserAction::Click { target: forged })
+            .await;
         assert_eq!(result, Err(BrowserError::ActionTargetNotFound("b1".into())));
-        assert!(browser.perform(BrowserAction::Click { target: action }).await.is_err());
+        assert!(
+            browser
+                .perform(BrowserAction::Click { target: action })
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]

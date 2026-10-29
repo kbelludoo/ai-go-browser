@@ -1,3 +1,10 @@
+//! HTTP transport with explicit DNS validation, address pinning, redirect
+//! revalidation, timeouts, a response-size cap and the Go request surface.
+//!
+//! It deliberately disables environment proxies because a proxy would bypass
+//! the pinned destination-address guarantee. Deployments requiring a proxy
+//! should provide a separately reviewed, policy-enforcing proxy adapter.
+
 use std::{
     fmt,
     net::{IpAddr, SocketAddr},
@@ -5,12 +12,34 @@ use std::{
     time::Duration,
 };
 
-use reqwest::{Client, StatusCode, header::LOCATION, redirect::Policy};
+use reqwest::{
+    Client, Method,
+    cookie::Jar,
+    header::{CONTENT_TYPE, LOCATION},
+    redirect::Policy,
+};
 use url::{Host, Url};
 
 use crate::UrlPolicyError;
 use crate::destination::{DestinationPolicy, HostResolver, PublicInternet, SystemResolver};
+use crate::encoding::{self, DecodedBody};
 use crate::url_policy::validate_syntax;
+
+mod headers;
+mod hops;
+
+pub use hops::encode_form;
+
+use hops::{append_capped, decode_error as transport_decode_error, is_redirect, resolve_redirect};
+
+/// Go `MaxBody`: the DOM path refuses a larger response instead of truncating.
+pub const MAX_BODY: usize = 5 << 20;
+/// Go `maxResourceBytes`: resource responses are truncated at this size.
+pub const MAX_RESOURCE_BYTES: usize = 96 << 10;
+/// Go follows at most 15 redirects and then reports "many redirects".
+pub const MAX_REDIRECTS: usize = 15;
+/// Go `http.Client.Timeout`.
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TransportError {
@@ -20,7 +49,8 @@ pub enum TransportError {
     TooManyRedirects,
     ResponseTooLarge { limit: usize },
     InvalidRedirect,
-    InvalidUtf8,
+    InvalidCharset(String),
+    DecodeLimit { limit: usize, decoded: bool },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -28,30 +58,65 @@ pub struct HttpResponse {
     pub final_url: String,
     pub status: u16,
     pub content_type: Option<String>,
+    /// Media type after `Content-Type` parsing and, when absent, sniffing.
+    pub media_type: String,
+    /// Wire bytes, truncated to the resource budget for non-HTML responses.
     pub body: Vec<u8>,
+    /// Bytes observed before a resource truncation.
+    pub wire_bytes: usize,
+    pub truncated: bool,
+}
+
+impl HttpResponse {
+    /// Build a response from an already-read body, applying the same media-type
+    /// derivation as the transport. Used by adapters and tests.
+    pub fn new(
+        final_url: impl Into<String>,
+        status: u16,
+        content_type: Option<String>,
+        body: Vec<u8>,
+    ) -> Self {
+        let media_type = content_type
+            .as_deref()
+            .map(encoding::media_type)
+            .unwrap_or_default();
+        let wire_bytes = body.len();
+        Self {
+            final_url: final_url.into(),
+            status,
+            content_type,
+            media_type,
+            body,
+            wire_bytes,
+            truncated: false,
+        }
+    }
 }
 
 /// An HTTP response parsed into the project's semantic HTML snapshot.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FetchedPage {
     pub response: HttpResponse,
+    pub decoded: DecodedBody,
     pub snapshot: crate::SemanticSnapshot,
 }
 
 impl FetchedPage {
     fn from_response(response: HttpResponse) -> Result<Self, TransportError> {
-        let html = std::str::from_utf8(&response.body).map_err(|_| TransportError::InvalidUtf8)?;
-        let snapshot = crate::parse_semantic_html(response.final_url.clone(), html);
-        Ok(Self { response, snapshot })
+        let content_type = response.content_type.clone().unwrap_or_default();
+        let decoded = encoding::decode(&content_type, &response.body, MAX_BODY)
+            .map_err(transport_decode_error)?;
+        let snapshot = crate::parse_semantic_html(response.final_url.clone(), &decoded.text);
+        Ok(Self {
+            response,
+            decoded,
+            snapshot,
+        })
     }
 }
 
-/// Minimal HTTP GET transport with explicit DNS validation, address pinning,
-/// redirect revalidation, timeouts, and a response-size cap.
-///
-/// It deliberately disables environment proxies because a proxy would bypass
-/// the pinned destination-address guarantee. Deployments requiring a proxy
-/// should provide a separately reviewed, policy-enforcing proxy adapter.
+/// Minimal HTTP transport with the Go request headers, form submission, cookie
+/// jar, redirect policy and body budgets.
 #[derive(Clone)]
 pub struct SafeHttpTransport {
     timeout: Duration,
@@ -59,6 +124,7 @@ pub struct SafeHttpTransport {
     max_redirects: usize,
     policy: Arc<dyn DestinationPolicy>,
     resolver: Arc<dyn HostResolver>,
+    jar: Arc<Jar>,
 }
 
 impl fmt::Debug for SafeHttpTransport {
@@ -74,7 +140,7 @@ impl fmt::Debug for SafeHttpTransport {
 
 impl Default for SafeHttpTransport {
     fn default() -> Self {
-        Self::new(Duration::from_secs(15), 4 * 1024 * 1024, 5)
+        Self::new(DEFAULT_TIMEOUT, MAX_BODY, MAX_REDIRECTS)
     }
 }
 
@@ -108,19 +174,53 @@ impl SafeHttpTransport {
             max_redirects,
             policy,
             resolver,
+            jar: Arc::new(Jar::default()),
         }
     }
 
-    /// Fetch a page and parse its response body as UTF-8 HTML.
+    /// Fetch a page and parse its response body into a semantic snapshot.
     /// This is a static HTML snapshot, not a JavaScript-capable browser DOM.
     pub async fn get_page(&self, input: &str) -> Result<FetchedPage, TransportError> {
         FetchedPage::from_response(self.get(input).await?)
     }
 
     pub async fn get(&self, input: &str) -> Result<HttpResponse, TransportError> {
-        let mut current = validate_syntax(input).map_err(TransportError::Policy)?;
+        self.request(Method::GET, input, None).await
+    }
 
-        for redirect_count in 0..=self.max_redirects {
+    /// Submit an HTML form. The body is encoded exactly like Go's
+    /// `url.Values.Encode`: sorted keys, repeated values preserved.
+    pub async fn post_form(
+        &self,
+        input: &str,
+        fields: &[(String, String)],
+    ) -> Result<HttpResponse, TransportError> {
+        self.request(Method::POST, input, Some(fields)).await
+    }
+
+    /// Issue `method` against `input`, following redirects with Go semantics.
+    pub async fn request(
+        &self,
+        method: Method,
+        input: &str,
+        form: Option<&[(String, String)]>,
+    ) -> Result<HttpResponse, TransportError> {
+        let mut current = validate_syntax(input).map_err(TransportError::Policy)?;
+        let mut method = method;
+        if method == Method::GET
+            && let Some(fields) = form
+        {
+            // HTML GET submission replaces the action URL's query component.
+            current.set_query(Some(&encode_form(fields)));
+        }
+        let mut body = if method == Method::POST {
+            form.map(encode_form)
+        } else {
+            None
+        };
+        let mut redirects = 0;
+
+        loop {
             self.policy
                 .check_url(&current)
                 .map_err(TransportError::Policy)?;
@@ -128,23 +228,31 @@ impl SafeHttpTransport {
             let mut builder = Client::builder()
                 .redirect(Policy::none())
                 .timeout(self.timeout)
-                .no_proxy();
-
+                .no_proxy()
+                .cookie_provider(self.jar.clone());
             if let Some(domain) = host {
                 builder = builder.resolve_to_addrs(&domain, &addresses);
             }
-
             let client = builder
                 .build()
-                .map_err(|e| TransportError::Request(e.to_string()))?;
-            let response = client
-                .get(current.clone())
+                .map_err(|error| TransportError::Request(error.to_string()))?;
+
+            let mut request = client.request(method.clone(), current.clone());
+            for (name, value) in headers::REQUEST_HEADERS {
+                request = request.header(name, value);
+            }
+            if let Some(payload) = &body {
+                request = request
+                    .header(CONTENT_TYPE, headers::FORM_CONTENT_TYPE)
+                    .body(payload.clone());
+            }
+            let response = request
                 .send()
                 .await
-                .map_err(|e| TransportError::Request(e.to_string()))?;
+                .map_err(|error| TransportError::Request(error.to_string()))?;
 
             if is_redirect(response.status()) {
-                if redirect_count == self.max_redirects {
+                if redirects == self.max_redirects {
                     return Err(TransportError::TooManyRedirects);
                 }
                 let location = response
@@ -152,76 +260,87 @@ impl SafeHttpTransport {
                     .get(LOCATION)
                     .and_then(|value| value.to_str().ok())
                     .ok_or(TransportError::InvalidRedirect)?;
-                current = resolve_redirect(self.policy.as_ref(), &current, location)?;
+                let next = resolve_redirect(self.policy.as_ref(), &current, location)?;
+                if matches!(response.status().as_u16(), 301..=303)
+                    && method != Method::GET
+                    && method != Method::HEAD
+                {
+                    method = Method::GET;
+                    body = None;
+                }
+                redirects += 1;
+                current = next;
                 continue;
             }
 
-            let status = response.status().as_u16();
-            let content_type = response
-                .headers()
-                .get(reqwest::header::CONTENT_TYPE)
-                .and_then(|value| value.to_str().ok())
-                .map(str::to_owned);
-            if response
-                .content_length()
-                .is_some_and(|n| n > self.max_response_bytes as u64)
-            {
-                return Err(TransportError::ResponseTooLarge {
-                    limit: self.max_response_bytes,
-                });
-            }
+            return self.read_response(response, &current).await;
+        }
+    }
 
-            let mut response = response;
-            let mut body = Vec::new();
-            while let Some(chunk) = response
-                .chunk()
-                .await
-                .map_err(|e| TransportError::Request(e.to_string()))?
-            {
-                append_limited_body(&mut body, &chunk, self.max_response_bytes)?;
-            }
+    /// Read the body with the Go budget: `limit + 1` bytes, then decide.
+    async fn read_response(
+        &self,
+        mut response: reqwest::Response,
+        final_url: &Url,
+    ) -> Result<HttpResponse, TransportError> {
+        let status = response.status().as_u16();
+        let content_type = response
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
+        let mut media = content_type
+            .as_deref()
+            .map(encoding::media_type)
+            .unwrap_or_default();
+        let limit = if !media.is_empty() && !encoding::html_media_type(&media) {
+            MAX_RESOURCE_BYTES
+        } else {
+            self.max_response_bytes
+        };
 
-            return Ok(HttpResponse {
-                final_url: current.to_string(),
-                status,
-                content_type,
-                body,
-            });
+        let mut body = Vec::new();
+        while let Some(chunk) = response
+            .chunk()
+            .await
+            .map_err(|error| TransportError::Request(error.to_string()))?
+        {
+            append_capped(&mut body, &chunk, limit + 1);
+            if body.len() > limit {
+                break;
+            }
         }
 
-        Err(TransportError::TooManyRedirects)
+        if media.is_empty() {
+            media = encoding::sniff_media_type(&body);
+        }
+        let observed = body.len();
+        if !encoding::html_media_type(&media) {
+            let truncated = body.len() > MAX_RESOURCE_BYTES;
+            body.truncate(MAX_RESOURCE_BYTES);
+            return Ok(HttpResponse {
+                final_url: final_url.to_string(),
+                status,
+                content_type,
+                media_type: media,
+                body,
+                wire_bytes: observed,
+                truncated,
+            });
+        }
+        if body.len() > limit {
+            return Err(TransportError::ResponseTooLarge { limit });
+        }
+        Ok(HttpResponse {
+            final_url: final_url.to_string(),
+            status,
+            content_type,
+            media_type: media,
+            body,
+            wire_bytes: observed,
+            truncated: false,
+        })
     }
-}
-
-/// Resolve and validate a redirect destination before any subsequent DNS lookup or request.
-fn resolve_redirect(
-    policy: &dyn DestinationPolicy,
-    current: &Url,
-    location: &str,
-) -> Result<Url, TransportError> {
-    let target = current
-        .join(location)
-        .map_err(|_| TransportError::InvalidRedirect)?;
-    validate_syntax(target.as_str()).map_err(TransportError::Policy)?;
-    policy.check_url(&target).map_err(TransportError::Policy)?;
-    Ok(target)
-}
-
-/// Append one streamed response chunk without allowing the body to exceed its cap.
-fn append_limited_body(
-    body: &mut Vec<u8>,
-    chunk: &[u8],
-    limit: usize,
-) -> Result<(), TransportError> {
-    if body.len().saturating_add(chunk.len()) > limit {
-        return Err(TransportError::ResponseTooLarge { limit });
-    }
-    body.extend_from_slice(chunk);
-    Ok(())
-}
-
-fn is_redirect(status: StatusCode) -> bool {
-    matches!(status.as_u16(), 301 | 302 | 303 | 307 | 308)
 }
 
 impl SafeHttpTransport {
@@ -265,128 +384,4 @@ impl SafeHttpTransport {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn rejects_private_literal_before_opening_a_connection() {
-        for url in [
-            "http://127.0.0.1:1/",
-            "http://10.0.0.1:1/",
-            "http://169.254.169.254/latest/meta-data/",
-            "http://[::1]:1/",
-        ] {
-            let error = SafeHttpTransport::default().get(url).await.unwrap_err();
-            assert_eq!(
-                error,
-                TransportError::Policy(UrlPolicyError::PrivateAddress),
-                "{url}"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn rejects_localhost_before_dns_resolution() {
-        let error = SafeHttpTransport::default()
-            .get("http://localhost:1/")
-            .await
-            .unwrap_err();
-        assert_eq!(error, TransportError::Policy(UrlPolicyError::LocalHost));
-    }
-
-    #[tokio::test]
-    async fn rejects_non_http_schemes_before_network_access() {
-        let error = SafeHttpTransport::default()
-            .get("file:///etc/passwd")
-            .await
-            .unwrap_err();
-        assert_eq!(
-            error,
-            TransportError::Policy(UrlPolicyError::UnsupportedScheme)
-        );
-    }
-
-    #[test]
-    fn parses_response_body_into_semantic_snapshot() {
-        let response = HttpResponse {
-            final_url: "https://example.com/page".into(),
-            status: 200,
-            content_type: Some("text/html; charset=utf-8".into()),
-            body: b"<title>Demo</title><button>Continue</button>".to_vec(),
-        };
-        let page = FetchedPage::from_response(response).unwrap();
-        assert_eq!(page.snapshot.url, "https://example.com/page");
-        assert_eq!(page.snapshot.title, "Demo");
-        assert_eq!(page.snapshot.actionable().count(), 1);
-    }
-
-    #[test]
-    fn rejects_non_utf8_html_response() {
-        let response = HttpResponse {
-            final_url: "https://example.com/".into(),
-            status: 200,
-            content_type: Some("text/html".into()),
-            body: vec![0xff, 0xfe],
-        };
-        assert_eq!(
-            FetchedPage::from_response(response),
-            Err(TransportError::InvalidUtf8)
-        );
-    }
-
-    #[test]
-    fn redirect_resolution_rejects_private_destinations_before_fetching() {
-        let current = Url::parse("https://example.com/start").unwrap();
-        for location in [
-            "http://127.0.0.1/admin",
-            "http://localhost/admin",
-            "file:///etc/passwd",
-        ] {
-            let error = resolve_redirect(&PublicInternet, &current, location).unwrap_err();
-            assert!(
-                matches!(error, TransportError::Policy(_)),
-                "expected policy rejection for {location}, got {error:?}"
-            );
-        }
-    }
-
-    #[test]
-    fn redirect_resolution_supports_relative_locations() {
-        let current = Url::parse("https://example.com/a/page").unwrap();
-        let target = resolve_redirect(&PublicInternet, &current, "../next").unwrap();
-        assert_eq!(target.as_str(), "https://example.com/next");
-    }
-
-    #[test]
-    fn streamed_body_limit_accepts_exact_limit() {
-        let mut body = Vec::new();
-        append_limited_body(&mut body, b"abc", 5).unwrap();
-        append_limited_body(&mut body, b"de", 5).unwrap();
-        assert_eq!(body, b"abcde");
-    }
-
-    #[test]
-    fn streamed_body_limit_rejects_chunked_overflow_without_appending_it() {
-        let mut body = b"abc".to_vec();
-        let error = append_limited_body(&mut body, b"def", 5).unwrap_err();
-        assert_eq!(error, TransportError::ResponseTooLarge { limit: 5 });
-        assert_eq!(body, b"abc");
-    }
-
-    #[test]
-    fn default_limits_are_conservative() {
-        let transport = SafeHttpTransport::default();
-        assert_eq!(transport.timeout, Duration::from_secs(15));
-        assert_eq!(transport.max_response_bytes, 4 * 1024 * 1024);
-        assert_eq!(transport.max_redirects, 5);
-    }
-
-    #[test]
-    fn recognizes_only_supported_redirect_statuses() {
-        assert!(is_redirect(StatusCode::MOVED_PERMANENTLY));
-        assert!(is_redirect(StatusCode::FOUND));
-        assert!(is_redirect(StatusCode::TEMPORARY_REDIRECT));
-        assert!(!is_redirect(StatusCode::OK));
-        assert!(!is_redirect(StatusCode::BAD_REQUEST));
-    }
-}
+mod tests;

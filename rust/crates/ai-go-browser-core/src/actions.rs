@@ -22,7 +22,11 @@ impl BrowserAction {
             | Self::Fill { target, .. }
             | Self::SelectOption { target, .. }
             | Self::Submit { target } => Some(target),
-            Self::Back | Self::Forward | Self::Reload | Self::WaitForText { .. } | Self::ExtractText => None,
+            Self::Back
+            | Self::Forward
+            | Self::Reload
+            | Self::WaitForText { .. }
+            | Self::ExtractText => None,
         }
     }
 }
@@ -34,7 +38,13 @@ mod tests {
     #[test]
     fn target_is_exposed_only_for_element_actions() {
         let target = ActionRef::new("b2", "Save").unwrap();
-        assert_eq!(BrowserAction::Click { target: target.clone() }.target(), Some(&target));
+        assert_eq!(
+            BrowserAction::Click {
+                target: target.clone()
+            }
+            .target(),
+            Some(&target)
+        );
         assert!(BrowserAction::Back.target().is_none());
         assert!(BrowserAction::ExtractText.target().is_none());
     }

@@ -10,7 +10,9 @@ impl ActionRef {
     pub fn new(id: impl Into<String>, label: impl Into<String>) -> Option<Self> {
         let id = id.into();
         let label = label.into();
-        if id.trim().is_empty() || label.trim().is_empty() { return None; }
+        if id.trim().is_empty() || label.trim().is_empty() {
+            return None;
+        }
         Some(Self { id, label })
     }
 }
@@ -24,6 +26,12 @@ impl fmt::Display for ActionRef {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test] fn valid_ref() { assert_eq!(ActionRef::new("a1", "Submit").unwrap().id, "a1"); }
-    #[test] fn rejects_empty() { assert!(ActionRef::new(" ", "Submit").is_none()); }
+    #[test]
+    fn valid_ref() {
+        assert_eq!(ActionRef::new("a1", "Submit").unwrap().id, "a1");
+    }
+    #[test]
+    fn rejects_empty() {
+        assert!(ActionRef::new(" ", "Submit").is_none());
+    }
 }
