@@ -169,7 +169,6 @@ impl Browser for HttpSnapshotBrowser {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -177,13 +176,15 @@ mod tests {
 
     #[tokio::test]
     async fn extracts_text_from_current_static_snapshot() {
-        let mut browser = HttpSnapshotBrowser::default();
-        browser.snapshot = Some(SemanticSnapshot {
-            url: "https://example.com".into(),
-            title: "Example".into(),
-            elements: vec![],
-        });
-        browser.current_text = Some("Hello from the page".into());
+        let mut browser = HttpSnapshotBrowser {
+            snapshot: Some(SemanticSnapshot {
+                url: "https://example.com".into(),
+                title: "Example".into(),
+                elements: vec![],
+            }),
+            current_text: Some("Hello from the page".into()),
+            ..HttpSnapshotBrowser::default()
+        };
 
         let output = browser.perform(BrowserAction::ExtractText).await.unwrap();
         assert_eq!(output.text.as_deref(), Some("Hello from the page"));
@@ -192,16 +193,18 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_stale_or_forged_action_references() {
-        let mut browser = HttpSnapshotBrowser::default();
         let action = ActionRef::new("b1", "Save").unwrap();
         let mut element = SemanticElement::new("button");
         element.name = Some("Save".into());
         element.action = Some(action.clone());
-        browser.snapshot = Some(SemanticSnapshot {
-            url: "https://example.com".into(),
-            title: "Example".into(),
-            elements: vec![element],
-        });
+        let mut browser = HttpSnapshotBrowser {
+            snapshot: Some(SemanticSnapshot {
+                url: "https://example.com".into(),
+                title: "Example".into(),
+                elements: vec![element],
+            }),
+            ..HttpSnapshotBrowser::default()
+        };
 
         let forged = ActionRef::new("b1", "Delete").unwrap();
         let result = browser.perform(BrowserAction::Click { target: forged }).await;
@@ -211,16 +214,18 @@ mod tests {
 
     #[tokio::test]
     async fn explicitly_rejects_mutating_actions_without_browser_engine() {
-        let mut browser = HttpSnapshotBrowser::default();
         let target = ActionRef::new("b1", "Save").unwrap();
         let mut element = SemanticElement::new("button");
         element.name = Some("Save".into());
         element.action = Some(target.clone());
-        browser.snapshot = Some(SemanticSnapshot {
-            url: "https://example.com".into(),
-            title: "Example".into(),
-            elements: vec![element],
-        });
+        let mut browser = HttpSnapshotBrowser {
+            snapshot: Some(SemanticSnapshot {
+                url: "https://example.com".into(),
+                title: "Example".into(),
+                elements: vec![element],
+            }),
+            ..HttpSnapshotBrowser::default()
+        };
 
         assert_eq!(
             browser.perform(BrowserAction::Click { target }).await,
