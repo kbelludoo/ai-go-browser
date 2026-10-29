@@ -65,6 +65,11 @@ jobs:
           odin_token=$(./ai-odin-browser tokens odin/fixtures/index.html)
           echo "Go tokens=$go_token Odin tokens=$odin_token"
           test "$go_token" = "$odin_token"
+      - name: Check static CSS selector query parity
+        run: |
+          ./go-browser-reference query-file odin/bench/fixture_generated.html https://example.com/catalog "main a" > /tmp/go-query.json
+          ./ai-odin-browser query-file odin/bench/fixture_generated.html https://example.com/catalog "main a" > /tmp/odin-query.json
+          python3 -c "import json; g=json.load(open('/tmp/go-query.json')); o=json.load(open('/tmp/odin-query.json')); assert g['ok'] and o['ok'], f'Queries failed: Go={g} Odin={o}'; assert len(g['matches']) == len(o['matches']) == 32, f'Count mismatch: Go={len(g[\"matches\"])} Odin={len(o[\"matches\"])}'; print(f'Selector parity PASS: matches={len(g[\"matches\"])}')"
       - uses: actions/upload-artifact@v4
         if: always()
         with:

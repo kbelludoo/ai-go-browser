@@ -18,6 +18,24 @@ Static_Projection :: struct {
 	cso: string,
 }
 
+query_cli_file :: proc(filepath, url, selector: string) {
+	content, err := os.read_entire_file(filepath, context.allocator)
+	if err != nil {
+		fmt.println("{\"ok\":false,\"error\":\"Cannot read file\"}")
+		return
+	}
+	defer delete(content)
+	arena: vmem.Arena
+	if vmem.arena_init_growing(&arena) != nil {
+		fmt.println("{\"ok\":false,\"error\":\"Cannot init arena\"}")
+		return
+	}
+	defer vmem.arena_destroy(&arena)
+	context.allocator = vmem.arena_allocator(&arena)
+	matches, query_err := query_static(string(content), url, selector)
+	agent_emit_query(matches, query_err)
+}
+
 benchmark_file :: proc(action, filepath, url: string, repetitions: int = 1) {
 	content, err := os.read_entire_file(filepath, context.allocator)
 	if err != nil {
@@ -59,7 +77,15 @@ benchmark_file :: proc(action, filepath, url: string, repetitions: int = 1) {
 benchmark_cli :: proc(args: []string) -> bool {
 	if len(args)<2 {return false}
 	action := args[1]
-	if action != "parse-file" && action != "bench-file" {return false}
+	if action != "parse-file" && action != "bench-file" && action != "query-file" {return false}
+	if action == "query-file" {
+		if len(args) != 5 {
+			fmt.println("Use: ai-odin-browser query-file <html-file> <url> <selector>")
+			return true
+		}
+		query_cli_file(args[2], args[3], args[4])
+		return true
+	}
 	if (action == "parse-file" && len(args)!=4) ||
 		(action == "bench-file" && len(args)!=5) {
 		fmt.println("Use: ai-odin-browser parse-file|bench-file <html-file> <url> [iterations]")
