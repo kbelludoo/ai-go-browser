@@ -15,31 +15,34 @@
 
 use std::{fs, path::PathBuf, process::ExitCode};
 
-use ai_go_browser_core::{SemanticSnapshot, parse_semantic_html};
+use ai_go_browser_core::{Page, parse_page};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct Golden {
     fixture: String,
     url: String,
     title: String,
-    headings: Vec<Heading>,
-    links: Vec<Link>,
-    buttons: Vec<Button>,
-    inputs: Vec<Input>,
+    #[serde(default)]
+    headings: Vec<HeadingGolden>,
+    #[serde(default)]
+    links: Vec<LinkGolden>,
+    #[serde(default)]
+    buttons: Vec<ButtonGolden>,
+    #[serde(default)]
+    inputs: Vec<FieldGolden>,
+    #[serde(default)]
+    forms: Vec<FormGolden>,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct Heading {
-    level: u32,
+struct HeadingGolden {
+    level: u8,
     text: String,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct Link {
+struct LinkGolden {
     #[serde(rename = "ref")]
     reference: String,
     label: String,
@@ -47,18 +50,43 @@ struct Link {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct Button {
+struct ButtonGolden {
     #[serde(rename = "ref")]
     reference: String,
     label: String,
+    #[serde(rename = "type", default)]
+    kind: String,
+    #[serde(default)]
+    disabled: bool,
+    #[serde(default)]
+    form_ref: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct Input {
+struct FieldGolden {
+    #[serde(rename = "ref")]
+    reference: String,
+    #[serde(default)]
     name: String,
+    #[serde(rename = "type", default)]
+    kind: String,
+    #[serde(default)]
     label: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FormGolden {
+    #[serde(rename = "ref")]
+    reference: String,
+    action: String,
+    method: String,
+    enctype: String,
+    #[serde(default)]
+    submit_ref: Option<String>,
+    #[serde(default)]
+    submit_label: Option<String>,
+    #[serde(default)]
+    fields: Vec<FieldGolden>,
 }
 
 fn main() -> ExitCode {
@@ -87,133 +115,190 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    let mut mismatched = 0_usize;
+    let mut matched = 0_usize;
+    let mut total_diffs = 0_usize;
     for path in &goldens {
         let raw = fs::read_to_string(path).expect("golden json");
         let golden: Golden = serde_json::from_str(&raw).expect("golden schema");
-        let html_path = fixtures.join(&golden.fixture);
-        let html = fs::read_to_string(&html_path).expect("fixture html");
-        let snapshot = parse_semantic_html(golden.url.clone(), &html);
+        let html = fs::read_to_string(fixtures.join(&golden.fixture)).expect("fixture html");
+        let page = parse_page(&golden.url, &html, 200, 0);
 
-        let report = compare(&golden, &snapshot);
-        if !report.is_empty() {
-            mismatched += 1;
-            println!("{}: {report}", golden.fixture);
-        } else {
-            println!("{}: match", golden.fixture);
+        let diffs = compare(&golden, &page);
+        if diffs.is_empty() {
+            matched += 1;
+            println!("{:<16} match", golden.fixture);
+            continue;
         }
+
+        total_diffs += diffs.len();
+        println!(
+            "{:<16} {} diffs{}",
+            golden.fixture,
+            diffs.len(),
+            if diffs.len() > 3 {
+                format!(": {}; ...", diffs[..3].join("; "))
+            } else {
+                format!(": {}", diffs.join("; "))
+            }
+        );
     }
 
     println!(
-        "\n{}/{} fixtures match",
-        goldens.len() - mismatched,
+        "\n{matched}/{} fixtures match, {total_diffs} differences",
         goldens.len()
     );
-    if mismatched == 0 {
+    if matched == goldens.len() {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
     }
 }
 
-fn compare(golden: &Golden, snapshot: &SemanticSnapshot) -> String {
+fn compare(golden: &Golden, page: &Page) -> Vec<String> {
     let mut diffs = Vec::new();
 
-    if snapshot.title != golden.title {
-        diffs.push(format!("title {:?} != {:?}", snapshot.title, golden.title));
+    if page.title != golden.title {
+        diffs.push(format!("title {:?} != {:?}", page.title, golden.title));
     }
 
-    let links = collect(snapshot, 'l');
-    let buttons = collect(snapshot, 'b');
-    let fields = collect(snapshot, 'f');
+    compare_len(
+        "headings",
+        golden.headings.len(),
+        page.headings.len(),
+        &mut diffs,
+    );
+    for (index, expected) in golden.headings.iter().enumerate() {
+        if let Some(actual) = page.headings.get(index)
+            && (actual.level != expected.level || actual.text != expected.text)
+        {
+            diffs.push(format!(
+                "h{index} {:?}:{} != {:?}:{}",
+                actual.text, actual.level, expected.text, expected.level
+            ));
+        }
+    }
 
-    compare_count("links", golden.links.len(), links.len(), &mut diffs);
-    compare_count("buttons", golden.buttons.len(), buttons.len(), &mut diffs);
-    compare_count("fields", golden.inputs.len(), fields.len(), &mut diffs);
-
+    compare_len("links", golden.links.len(), page.links.len(), &mut diffs);
     for (index, expected) in golden.links.iter().enumerate() {
-        if let Some(actual) = links.get(index) {
-            if actual.0 != expected.label {
-                diffs.push(format!(
-                    "link{} label {:?} != {:?}",
-                    index + 1,
-                    actual.0,
-                    expected.label
-                ));
-            }
-            if actual.1 != Some(expected.url.as_str()) {
-                diffs.push(format!(
-                    "link{} url {:?} != {:?}",
-                    index + 1,
-                    actual.1,
-                    expected.url
-                ));
-            }
+        if let Some(actual) = page.links.get(index)
+            && (actual.reference != expected.reference
+                || actual.label != expected.label
+                || actual.url != expected.url)
+        {
+            diffs.push(format!(
+                "link{index} ({} {:?} {}) != ({} {:?} {})",
+                actual.reference,
+                actual.label,
+                actual.url,
+                expected.reference,
+                expected.label,
+                expected.url
+            ));
         }
     }
 
+    compare_len(
+        "buttons",
+        golden.buttons.len(),
+        page.buttons.len(),
+        &mut diffs,
+    );
     for (index, expected) in golden.buttons.iter().enumerate() {
-        if let Some(actual) = buttons.get(index)
-            && actual.0 != expected.label
+        if let Some(actual) = page.buttons.get(index)
+            && (actual.reference != expected.reference
+                || actual.label != expected.label
+                || actual.kind != expected.kind
+                || actual.disabled != expected.disabled
+                || actual.form_ref != expected.form_ref)
         {
             diffs.push(format!(
-                "button{} label {:?} != {:?}",
-                index + 1,
-                actual.0,
-                expected.label
+                "button{index} ({} {:?} {} disabled={}) != ({} {:?} {} disabled={})",
+                actual.reference,
+                actual.label,
+                actual.kind,
+                actual.disabled,
+                expected.reference,
+                expected.label,
+                expected.kind,
+                expected.disabled
             ));
         }
     }
 
+    compare_len("inputs", golden.inputs.len(), page.inputs.len(), &mut diffs);
     for (index, expected) in golden.inputs.iter().enumerate() {
-        if let Some(actual) = fields.get(index)
-            && actual.0 != expected.label.as_deref().unwrap_or_default()
+        if let Some(actual) = page.inputs.get(index)
+            && (actual.reference != expected.reference
+                || actual.name != expected.name
+                || actual.kind != expected.kind
+                || present(&actual.label) != expected.label.as_deref())
         {
             diffs.push(format!(
-                "field{} label {:?} != {:?}",
-                index + 1,
-                actual.0,
-                expected.label
+                "input{index} ({} {:?} {}) != ({} {:?} {})",
+                actual.reference,
+                actual.label,
+                actual.kind,
+                expected.reference,
+                expected.label.as_deref().unwrap_or(""),
+                expected.kind
             ));
         }
     }
 
-    if !golden.headings.is_empty() {
-        diffs.push(format!(
-            "headings not implemented (go: {})",
-            golden
-                .headings
-                .iter()
-                .map(|heading| format!("h{}:{}", heading.level, heading.text))
-                .collect::<Vec<_>>()
-                .join(", ")
-        ));
+    compare_len("forms", golden.forms.len(), page.forms.len(), &mut diffs);
+    for (index, expected) in golden.forms.iter().enumerate() {
+        let Some(actual) = page.forms.get(index) else {
+            continue;
+        };
+        if actual.reference != expected.reference
+            || actual.action != expected.action
+            || actual.method != expected.method
+            || actual.enctype != expected.enctype
+            || actual.submit_ref != expected.submit_ref
+            || present(&actual.submit_label) != expected.submit_label.as_deref()
+        {
+            diffs.push(format!(
+                "form{index} ({} {} {} submit={:?} {:?}) != ({} {} {} submit={:?} {:?})",
+                actual.reference,
+                actual.method,
+                actual.action,
+                actual.submit_ref,
+                actual.submit_label,
+                expected.reference,
+                expected.method,
+                expected.action,
+                expected.submit_ref,
+                expected.submit_label
+            ));
+        }
+        let expected_refs = expected
+            .fields
+            .iter()
+            .map(|field| field.reference.as_str())
+            .collect::<Vec<_>>();
+        let actual_refs = actual
+            .fields
+            .iter()
+            .map(|field| field.reference.as_str())
+            .collect::<Vec<_>>();
+        if actual_refs != expected_refs {
+            diffs.push(format!(
+                "form{index} fields {actual_refs:?} != {expected_refs:?}"
+            ));
+        }
     }
 
-    diffs.join("; ")
+    diffs
 }
 
-fn compare_count(label: &str, expected: usize, actual: usize, diffs: &mut Vec<String>) {
+fn compare_len(label: &str, expected: usize, actual: usize, diffs: &mut Vec<String>) {
     if expected != actual {
         diffs.push(format!("{label} {actual} != {expected}"));
     }
 }
 
-fn collect(snapshot: &SemanticSnapshot, prefix: char) -> Vec<(&str, Option<&str>)> {
-    snapshot
-        .elements
-        .iter()
-        .filter(|element| {
-            element
-                .action
-                .as_ref()
-                .is_some_and(|action| action.id.starts_with(prefix))
-        })
-        .map(|element| {
-            (
-                element.accessible_name().unwrap_or(""),
-                element.href.as_deref(),
-            )
-        })
-        .collect()
+/// Go marks `label` and `submit_label` as `omitempty`, so an empty Rust string
+/// is the same observation as an absent key in the golden JSON.
+fn present(value: &str) -> Option<&str> {
+    if value.is_empty() { None } else { Some(value) }
 }

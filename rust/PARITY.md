@@ -27,30 +27,42 @@ parity diff instead of silently changing the target.
 ## Baseline (measured, current branch)
 
 `go run ./rust/parity/gen` → 6 fixtures; `cargo run --example parity_report` →
-**0/6 fixtures match**. The gap classes are:
+**6/6 fixtures match, 0 differences**. The first measured baseline was 0/6; the
+gap classes closed so far were:
 
-| Gap | Example from the report |
+| Gap | Resolution |
 | --- | --- |
-| Relative URLs are not resolved against the page URL | `"/catalog"` vs `"https://example.test/catalog"` |
-| Headings are not extracted | Go reports `h1:Widget Store, h2:Featured` |
-| Visibility rules are not applied | Rust lists `display:none` and `aria-hidden` links; Go excludes them |
-| Forms are not modeled | forms.html: Rust 5 loose fields, Go 0 inputs + 1 form |
-| Reference prefixes and naming differ | Go uses `i1` for inputs, `f1` for forms; `title`-only and `image` inputs get `(button)`/no label |
+| Relative URLs not resolved against the page URL | `dom::resolve` mirrors Go `resolve` (HTTP(S) only) |
+| Headings not extracted | `h1`–`h6` visible headings with `innerText(1200)` |
+| Visibility rules not applied | `hidden()`/`visible()` ports `display:none`, `visibility:hidden`, `aria-hidden`, `hidden`, inert tags |
+| Forms not modeled | `Field`/`Form`/`Button`/`Choice` with `i*`/`f*`/`b*` refs and submit metadata |
+| Reference prefixes and naming differ | `controlLabel` precedence and `(button)` fallback copied from Go |
+| Empty labels serialized as `""` | Report treats empty `label`/`submit_label` as Go's `omitempty` omission |
+
+The report was also mutation-checked: changing the `(button)` fallback to
+`(btn)` turns the run red with two button diffs, then reverts to green.
 
 ## Phases
 
 Legend: `todo` · `partial` · `done`
 
-### Phase 1 — Static parsing parity (`todo`)
+### Phase 1 — Static parsing parity (`partial`)
 Go: `browser/dom.go` (1083), `browser/parser.go` (514), `browser/forms.go` (293),
 `browser/encoding.go` (128), `browser/promotion.go` (169).
-Rust target: `src/parser.rs`, `src/semantic.rs`, new `src/dom.rs`, `src/forms.rs`.
+Rust target: `src/parser.rs`, `src/semantic.rs`, `src/dom.rs`, `src/forms.rs`.
 Covers: ref numbering (`l*`/`b*`/`i*`/`f*`), accessible names in Go's precedence
 order, visibility (`display:none`, `aria-hidden`, `hidden` quirks), form
 ownership and submit metadata, headings, description/metadata, charset
 detection, URL resolution.
 Acceptance: 6/6 fixtures match; new fixtures cover tables, nested forms,
 select/optgroup, contenteditable, SVG links, and duplicate ids.
+
+Status: the current corpus is green (6/6) and `src/dom.rs` ports visibility,
+control typing/refs, accessible names, form ownership (including `form=` and
+`data-aigobrowser` markers), select/optgroup state, radio groups, text
+normalization and the rune-limited page text. Still open before this phase can
+be marked done: `description`/`metadata` extraction, charset detection, and the
+extra fixtures listed above.
 
 ### Phase 2 — HTTP transport parity (`partial`)
 Go: `browser/transport.go` (464), `browser/resources.go` (124), `browser/ticketrelay.go` (534).
@@ -121,6 +133,7 @@ reproduced with the same corpus and published next to the Go numbers.
 
 ## Current Rust surface
 
-`src`: `action`, `actions`, `browser`, `destination`, `memory`, `parser`,
-`semantic`, `session`, `transport`, `url_policy` (~1.2k LOC). That is roughly one
-tenth of the Go surface, so the matrix above is the actual backlog.
+`src`: `action`, `actions`, `browser`, `destination`, `dom` (`fields`, `node`,
+`page`, `text`), `memory`, `parser`, `semantic`, `session`, `transport`,
+`url_policy` (~2.5k LOC, every file under the 400-line ceiling). That is roughly
+a tenth of the Go surface, so the matrix above is the actual backlog.

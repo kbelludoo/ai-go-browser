@@ -31,6 +31,7 @@ type golden struct {
 	Links    []browser.Link    `json:"links"`
 	Buttons  []browser.Button  `json:"buttons"`
 	Inputs   []browser.Field   `json:"inputs"`
+	Forms    []browser.Form    `json:"forms"`
 }
 
 func main() {
@@ -79,6 +80,7 @@ func main() {
 			Links:    nonNil(page.Links),
 			Buttons:  nonNil(page.Buttons),
 			Inputs:   nonNil(page.Inputs),
+			Forms:    nonNil(page.Forms),
 		}
 		encoded, err := json.MarshalIndent(record, "", "  ")
 		if err != nil {

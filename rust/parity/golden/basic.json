@@ -55,5 +55,25 @@
       }
     }
   ],
-  "inputs": []
+  "inputs": [],
+  "forms": [
+    {
+      "ref": "f1",
+      "action": "https://example.test/search",
+      "method": "GET",
+      "fields": [
+        {
+          "ref": "i1",
+          "id": "q",
+          "name": "q",
+          "type": "text",
+          "value": "widgets",
+          "label": "Search"
+        }
+      ],
+      "submit_label": "Go",
+      "submit_ref": "b2",
+      "enctype": "application/x-www-form-urlencoded"
+    }
+  ]
 }
