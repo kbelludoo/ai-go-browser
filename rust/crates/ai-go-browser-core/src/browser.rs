@@ -33,6 +33,8 @@ pub struct HttpSnapshotBrowser {
     transport: SafeHttpTransport,
     snapshot: Option<SemanticSnapshot>,
     current_text: Option<String>,
+    history: Vec<String>,
+    history_index: Option<usize>,
 }
 
 impl Default for HttpSnapshotBrowser {
@@ -43,13 +45,16 @@ impl Default for HttpSnapshotBrowser {
 
 impl HttpSnapshotBrowser {
     pub fn new(transport: SafeHttpTransport) -> Self {
-        Self { transport, snapshot: None, current_text: None }
+        Self {
+            transport,
+            snapshot: None,
+            current_text: None,
+            history: Vec::new(),
+            history_index: None,
+        }
     }
-}
 
-#[async_trait]
-impl Browser for HttpSnapshotBrowser {
-    async fn navigate(&mut self, url: &str) -> Result<SemanticSnapshot, BrowserError> {
+    async fn fetch_static_page(&self, url: &str) -> Result<(SemanticSnapshot, String), BrowserError> {
         let page = self.transport.get_page(url).await.map_err(|error| {
             match error {
                 TransportError::Policy(policy) => BrowserError::Policy(policy),
@@ -67,9 +72,35 @@ impl Browser for HttpSnapshotBrowser {
             .split_whitespace()
             .collect::<Vec<_>>()
             .join(" ");
+        Ok((page.snapshot, text))
+    }
+
+    async fn load_history_entry(&mut self, index: usize) -> Result<SemanticSnapshot, BrowserError> {
+        let url = self.history.get(index)
+            .cloned()
+            .ok_or_else(|| BrowserError::Navigation("history entry does not exist".into()))?;
+        let (snapshot, text) = self.fetch_static_page(&url).await?;
+        self.snapshot = Some(snapshot.clone());
         self.current_text = Some(text);
-        self.snapshot = Some(page.snapshot.clone());
-        Ok(page.snapshot)
+        self.history_index = Some(index);
+        Ok(snapshot)
+    }
+}
+
+#[async_trait]
+impl Browser for HttpSnapshotBrowser {
+    async fn navigate(&mut self, url: &str) -> Result<SemanticSnapshot, BrowserError> {
+        let (snapshot, text) = self.fetch_static_page(url).await?;
+        if let Some(index) = self.history_index {
+            self.history.truncate(index + 1);
+        } else {
+            self.history.clear();
+        }
+        self.history.push(snapshot.url.clone());
+        self.history_index = Some(self.history.len() - 1);
+        self.current_text = Some(text);
+        self.snapshot = Some(snapshot.clone());
+        Ok(snapshot)
     }
 
     async fn perform(&mut self, action: BrowserAction) -> Result<BrowserOutput, BrowserError> {
@@ -103,9 +134,33 @@ impl Browser for HttpSnapshotBrowser {
             | BrowserAction::Submit { .. } => Err(BrowserError::Unsupported(
                 "mutating actions require a JavaScript-capable browser engine".into(),
             )),
-            BrowserAction::Back | BrowserAction::Forward | BrowserAction::Reload => Err(
-                BrowserError::Unsupported("history navigation is not implemented".into())
-            ),
+            BrowserAction::Back => {
+                let index = self.history_index.ok_or_else(|| {
+                    BrowserError::Navigation("no page in history".into())
+                })?;
+                if index == 0 {
+                    return Err(BrowserError::Navigation("already at the first history entry".into()));
+                }
+                let snapshot = self.load_history_entry(index - 1).await?;
+                Ok(BrowserOutput { snapshot: Some(snapshot), text: self.current_text.clone() })
+            }
+            BrowserAction::Forward => {
+                let index = self.history_index.ok_or_else(|| {
+                    BrowserError::Navigation("no page in history".into())
+                })?;
+                if index + 1 >= self.history.len() {
+                    return Err(BrowserError::Navigation("already at the latest history entry".into()));
+                }
+                let snapshot = self.load_history_entry(index + 1).await?;
+                Ok(BrowserOutput { snapshot: Some(snapshot), text: self.current_text.clone() })
+            }
+            BrowserAction::Reload => {
+                let index = self.history_index.ok_or_else(|| {
+                    BrowserError::Navigation("no page to reload".into())
+                })?;
+                let snapshot = self.load_history_entry(index).await?;
+                Ok(BrowserOutput { snapshot: Some(snapshot), text: self.current_text.clone() })
+            }
         }
     }
 
