@@ -17,7 +17,7 @@ pub use memory::{MemoryEntry, MemoryStore};
 pub use parser::parse_semantic_html;
 pub use semantic::{SemanticElement, SemanticSnapshot};
 pub use session::Session;
-pub use transport::{HttpResponse, SafeHttpTransport, TransportError};
+pub use transport::{FetchedPage, HttpResponse, SafeHttpTransport, TransportError};
 pub use url_policy::{validate_url, UrlPolicyError};
 
 #[cfg(test)]
