@@ -16,13 +16,12 @@ import vmem "core:mem/virtual"
 // Input (one JSON object per line):
 //   {"cmd":"open","url":"https://example.com"}
 //   {"cmd":"follow","ref":"l1"} (or {"cmd":"click","ref":"l1"})
-//   {"cmd":"submit","ref":"f1","fields":["q=test"]}
+//   {"cmd":"submit","ref":"f1","fields":["q=test"]}  (GET and POST supported)
 //   {"cmd":"query","selector":"main a"}
 //   {"cmd":"back"}
 //   {"cmd":"snapshot"}
 //   {"cmd":"quit"}
 // Responses are *one JSON object* per line; no banners or incidental logs.
-// This is NOT MCP; it is a small stable JSONL contract useful to local agents.
 
 Agent_Command :: struct {
 	cmd: string,
@@ -138,6 +137,8 @@ agent_execute_line :: proc(line: string, session: ^Fetch_Session, saved: ^Fetch_
 		return true
 	}
 	target := ""
+	post_body := ""
+	is_post := false
 	switch cmd.cmd {
 	case "open":
 		target = cmd.url
@@ -172,12 +173,24 @@ agent_execute_line :: proc(line: string, session: ^Fetch_Session, saved: ^Fetch_
 			agent_emit(false, "form not found", saved)
 			return true
 		}
-		encoded, ok := form_get_url(p.forms[index-1], cmd.fields)
-		if !ok {
-			agent_emit(false, "form is not GET, or field not found", saved)
-			return true
+		form := p.forms[index-1]
+		if form.method == "post" {
+			body, ok := form_post_body(form, cmd.fields)
+			if !ok {
+				agent_emit(false, "form POST validation failed", saved)
+				return true
+			}
+			target = form.action
+			post_body = body
+			is_post = true
+		} else {
+			encoded, ok := form_get_url(form, cmd.fields)
+			if !ok {
+				agent_emit(false, "form is not valid, or field not found", saved)
+				return true
+			}
+			target = encoded
 		}
-		target = encoded
 	case:
 		agent_emit(false, "unknown command", saved)
 		return true
@@ -190,7 +203,12 @@ agent_execute_line :: proc(line: string, session: ^Fetch_Session, saved: ^Fetch_
 	// All command parsing, snapshot extraction and JSON output use the arena.
 	arena_allocator := context.allocator
 	context.allocator = runtime.default_context().allocator
-	next := fetch_session_get(session, target)
+	next: Fetch_Result
+	if is_post {
+		next = fetch_session_post(session, target, post_body)
+	} else {
+		next = fetch_session_get(session, target)
+	}
 	context.allocator = arena_allocator
 	if next.error != "" {
 		agent_emit(false, next.error, saved)

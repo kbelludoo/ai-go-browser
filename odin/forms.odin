@@ -3,16 +3,12 @@ package main
 import "core:strings"
 import "core:net"
 
-// Build an explicit GET-only form submission URL. This does not send an
-// HTTP request. POST and other methods are intentionally unsupported.
-form_get_url :: proc(form: Parsed_Form, overrides: []string) -> (string, bool) {
-	if form.method != "get" || form.action == "" || !fetch_validate_url(form.action) {
-		return "", false
-	}
+// Validates whether overrides only touch valid, enabled fields
+validate_form_overrides :: proc(form: Parsed_Form, overrides: []string) -> bool {
 	for item in overrides {
 		equals := strings.index(item, "=")
 		if equals <= 0 {
-			return "", false
+			return false
 		}
 		field_name := item[:equals]
 		found := false
@@ -23,7 +19,18 @@ form_get_url :: proc(form: Parsed_Form, overrides: []string) -> (string, bool) {
 				break
 			}
 		}
-		if !found {return "", false}
+		if !found {return false}
+	}
+	return true
+}
+
+// Build URL query string for GET forms
+form_get_url :: proc(form: Parsed_Form, overrides: []string) -> (string, bool) {
+	if form.method != "get" || form.action == "" || !fetch_validate_url(form.action) {
+		return "", false
+	}
+	if !validate_form_overrides(form, overrides) {
+		return "", false
 	}
 
 	out := strings.builder_make()
@@ -56,6 +63,46 @@ form_get_url :: proc(form: Parsed_Form, overrides: []string) -> (string, bool) {
 		value_encoded := net.percent_encode(value)
 		strings.write_byte(&out, separator)
 		separator = '&'
+		strings.write_string(&out, name_encoded)
+		strings.write_byte(&out, '=')
+		strings.write_string(&out, value_encoded)
+	}
+	return strings.clone(strings.to_string(out)), true
+}
+
+// Build urlencoded body payload for POST forms
+form_post_body :: proc(form: Parsed_Form, overrides: []string) -> (string, bool) {
+	if form.method != "post" || form.action == "" || !fetch_validate_url(form.action) {
+		return "", false
+	}
+	if !validate_form_overrides(form, overrides) {
+		return "", false
+	}
+
+	out := strings.builder_make()
+	defer strings.builder_destroy(&out)
+	first := true
+	for field in form.fields {
+		if field.disabled || field.name == "" || field.type == "submit" ||
+			field.type == "button" || field.type == "file" || field.type == "reset" {
+			continue
+		}
+		if (field.type == "checkbox" || field.type == "radio") && !field.checked {
+			continue
+		}
+		value := field.value
+		for item in overrides {
+			eq := strings.index(item, "=")
+			if item[:eq] == field.name {
+				value = item[eq+1:]
+			}
+		}
+		name_encoded := net.percent_encode(field.name)
+		value_encoded := net.percent_encode(value)
+		if !first {
+			strings.write_byte(&out, '&')
+		}
+		first = false
 		strings.write_string(&out, name_encoded)
 		strings.write_byte(&out, '=')
 		strings.write_string(&out, value_encoded)

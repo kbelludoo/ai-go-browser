@@ -11,6 +11,29 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_args):
         pass
 
+    def do_POST(self):
+        path = urlsplit(self.path).path
+        cookie_ok = "session=odin-ok" in self.headers.get("Cookie", "")
+        if not cookie_ok:
+            self.send_response(403)
+            self.end_headers()
+            self.wfile.write(b"cookie missing")
+            return
+        if path == "/login":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length).decode("utf-8")
+            data = parse_qs(body)
+            user = data.get("user", [""])[0]
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(
+                f"<html><head><title>POST Login OK</title></head><body><h1>Welcome {user}</h1></body></html>".encode()
+            )
+            return
+        self.send_response(404)
+        self.end_headers()
+
     def do_GET(self):
         path = urlsplit(self.path).path
         cookie_ok = "session=odin-ok" in self.headers.get("Cookie", "")
@@ -49,7 +72,9 @@ class Handler(BaseHTTPRequestHandler):
                 b"<body><h1>Authenticated session</h1>"
                 b"<a href='/next'>Protected article</a>"
                 b"<form method='GET' action='/search'><input name='q'>"
-                b"<button>Submit</button></form></body></html>"
+                b"<button>Submit</button></form>"
+                b"<form method='POST' action='/login'><input name='user' value='odin-agent'>"
+                b"<button>Login</button></form></body></html>"
             )
         elif path == "/next":
             self.wfile.write(

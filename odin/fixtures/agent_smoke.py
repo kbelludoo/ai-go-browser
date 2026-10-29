@@ -47,12 +47,21 @@ def main():
         start = send({"cmd": "open", "url": base + "/landing"})
         assert start["ok"] and start["page"]["title"] == "Session established", start
 
-        form = send({"cmd": "submit", "ref": "f1", "fields": ["q=from-agent"]})
-        assert form["ok"] and form["page"]["title"] == "Cookie form works", form
-        assert form["page"]["headings"][0]["text"] == "Query from-agent", form
+        # Form GET
+        form_get = send({"cmd": "submit", "ref": "f1", "fields": ["q=from-agent"]})
+        assert form_get["ok"] and form_get["page"]["title"] == "Cookie form works", form_get
+        assert form_get["page"]["headings"][0]["text"] == "Query from-agent", form_get
+
+        # Return to landing and submit Form POST
+        back_to_landing = send({"cmd": "back"})
+        assert back_to_landing["ok"] and back_to_landing["page"]["title"] == "Session established", back_to_landing
+
+        form_post = send({"cmd": "submit", "ref": "f2", "fields": ["user=odin-hero"]})
+        assert form_post["ok"] and form_post["page"]["title"] == "POST Login OK", form_post
+        assert form_post["page"]["headings"][0]["text"] == "Welcome odin-hero", form_post
 
         snap = send({"cmd": "snapshot"})
-        assert snap["ok"] and snap["page"]["url"].endswith("/search?q=from-agent")
+        assert snap["ok"] and snap["page"]["url"].endswith("/login")
 
         rejected = send({"cmd": "follow", "ref": "l99"})
         assert not rejected["ok"] and rejected["error"] == "link not found", rejected
@@ -61,10 +70,9 @@ def main():
         assert not bad["ok"] and "redirect rejected" in bad["error"], bad
 
         still = send({"cmd": "snapshot"})
-        assert still["ok"] and still["page"]["title"] == "Cookie form works"
+        assert still["ok"] and still["page"]["title"] == "POST Login OK"
 
         # Repeated snapshots and navigation must release transient arena data.
-        # This is a regression ceiling, not a comparable memory benchmark.
         def rss_kib():
             try:
                 with open(f"/proc/{p.pid}/status", encoding="utf-8") as fh:
@@ -79,7 +87,7 @@ def main():
         peak = baseline
         for _ in range(160):
             snap = send({"cmd": "snapshot"})
-            assert snap["ok"] and snap["page"]["title"] == "Cookie form works"
+            assert snap["ok"] and snap["page"]["title"] == "POST Login OK"
             peak = max(peak, rss_kib())
         for _ in range(20):
             page = send({"cmd": "open", "url": base + "/landing"})
@@ -97,7 +105,7 @@ def main():
         p.stdin.close()
         assert p.wait(timeout=10) == 0, p.stderr.read()
 
-    print("JSONL agent: cookies, refs, forms, snapshot, back, click and errors PASS")
+    print("JSONL agent: GET, POST, cookies, refs, forms, snapshot, back, click PASS")
 
 
 if __name__ == "__main__":

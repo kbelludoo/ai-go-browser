@@ -18,12 +18,25 @@ test_form_build_get_request :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_form_rejects_post_and_invalid_fields :: proc(t: ^testing.T) {
-	f := Parsed_Form{action="https://example.com/action",method="post"}
-	_, ok := form_get_url(f, nil)
-	testing.expect(t, !ok)
-	p := parse_html("<form action='/search'><input name='q'></form>", "https://example.com/page")
-	url, good := form_get_url(p.forms[0], nil)
-	testing.expect(t, good)
-	testing.expect(t, strings.contains(url, "https://example.com/search?q="))
+test_form_build_post_request :: proc(t: ^testing.T) {
+	html := "<form action='/login' method='POST'><input name='user' value='alice'><input name='pass' type='password'><input type='hidden' name='csrf' value='secret123'></form>"
+	p := parse_html(html, "https://example.com/login_page")
+	testing.expect(t, len(p.forms) == 1)
+	body, ok := form_post_body(p.forms[0], []string{"pass=mypassword"})
+	testing.expect(t, ok)
+	testing.expect(t, body == "user=alice&pass=mypassword&csrf=secret123")
+	// Must fail if attempting to override a nonexistent field
+	_, bad := form_post_body(p.forms[0], []string{"role=admin"})
+	testing.expect(t, !bad)
+}
+
+@(test)
+test_form_rejects_mismatched_method :: proc(t: ^testing.T) {
+	f_post := Parsed_Form{action="https://example.com/action",method="post"}
+	_, ok_get := form_get_url(f_post, nil)
+	testing.expect(t, !ok_get)
+
+	f_get := Parsed_Form{action="https://example.com/action",method="get"}
+	_, ok_post := form_post_body(f_get, nil)
+	testing.expect(t, !ok_post)
 }

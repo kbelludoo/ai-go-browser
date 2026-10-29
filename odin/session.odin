@@ -6,7 +6,7 @@ import "core:strings"
 import "vendor:curl"
 
 // One in-process libcurl cookie jar per CLI invocation. It is never saved to
-// disk and never shared across distinct invocations. All HTTP requests are GET.
+// disk and never shared across distinct invocations. Supports GET and POST.
 //
 // Redirects are followed manually so fetch_prereq can validate the resolved
 // address on *each* new connection. No automatic redirects or proxies.
@@ -78,22 +78,14 @@ fetch_session_init :: proc(s: ^Fetch_Session, allow_private: bool = false) -> bo
 	if curl.easy_setopt(h, .NOSIGNAL, libc.long(1)) != .E_OK {ok = false}
 	if curl.easy_setopt(h, .SSL_VERIFYPEER, libc.long(1)) != .E_OK {ok = false}
 	if curl.easy_setopt(h, .SSL_VERIFYHOST, libc.long(2)) != .E_OK {ok = false}
-	if curl.easy_setopt(h, .NOPROXY, cstring("*")) != .E_OK {ok = false}
 	if curl.easy_setopt(h, .PROXY, cstring("")) != .E_OK {ok = false}
-	if curl.easy_setopt(h, .HTTPGET, libc.long(1)) != .E_OK {ok = false}
-	if curl.easy_setopt(h, .WRITEFUNCTION, fetch_write) != .E_OK {ok = false}
-	if curl.easy_setopt(h, .HEADERFUNCTION, fetch_headers_callback) != .E_OK {ok = false}
-	if curl.easy_setopt(h, .PREREQFUNCTION, fetch_prereq) != .E_OK {ok = false}
-	if curl.easy_setopt(h, .PREREQDATA, &s.policy) != .E_OK {ok = false}
 	if curl.easy_setopt(h, .COOKIEFILE, cstring("")) != .E_OK {ok = false}
-	if !allow_private {
-		if curl.easy_setopt(h, .IPRESOLVE, libc.long(curl.IPRESOLVE_V4)) != .E_OK {
-			ok = false
-		}
-	}
+	if curl.easy_setopt(h, .HEADERFUNCTION, fetch_headers_callback) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .WRITEFUNCTION, fetch_write_callback) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .PREREQFUNCTION, fetch_prereq_callback) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .PREREQDATA, &s.policy) != .E_OK {ok = false}
 	if !ok {
-		curl.easy_cleanup(h)
-		s.handle = nil
+		fetch_session_close(s)
 		return false
 	}
 	return true
@@ -106,8 +98,7 @@ fetch_session_close :: proc(s: ^Fetch_Session) {
 	}
 }
 
-// Always free both .body and .effective_url of each returned Fetch_Result.
-fetch_session_once :: proc(s: ^Fetch_Session, target: string) -> (Fetch_Result, string) {
+fetch_session_once :: proc(s: ^Fetch_Session, target: string, post_body: string = "") -> (Fetch_Result, string) {
 	out := Fetch_Result{effective_url=strings.clone(target)}
 	if s.handle == nil {
 		out.error = "session not initialized"
@@ -126,12 +117,30 @@ fetch_session_once :: proc(s: ^Fetch_Session, target: string) -> (Fetch_Result, 
 	defer delete(url_c)
 	h := s.handle
 	if curl.easy_setopt(h, .URL, url_c) != .E_OK ||
-		curl.easy_setopt(h, .HTTPGET, libc.long(1)) != .E_OK ||
 		curl.easy_setopt(h, .WRITEDATA, &received) != .E_OK ||
 		curl.easy_setopt(h, .HEADERDATA, &headers) != .E_OK {
 		out.error = "libcurl failed to apply request policy"
 		return out, ""
 	}
+
+	body_c: cstring
+	if post_body != "" {
+		body_c = strings.clone_to_cstring(post_body)
+		if curl.easy_setopt(h, .POST, libc.long(1)) != .E_OK ||
+			curl.easy_setopt(h, .POSTFIELDS, body_c) != .E_OK ||
+			curl.easy_setopt(h, .POSTFIELDSIZE, libc.long(len(post_body))) != .E_OK {
+			delete(body_c)
+			out.error = "libcurl failed to configure POST"
+			return out, ""
+		}
+	} else {
+		if curl.easy_setopt(h, .HTTPGET, libc.long(1)) != .E_OK {
+			out.error = "libcurl failed to set HTTPGET"
+			return out, ""
+		}
+	}
+	defer if body_c != nil { delete(body_c) }
+
 	// NOTE: each callback data pointer is valid only for this synchronous call.
 	err := curl.easy_perform(h)
 	if received.exceeded {
@@ -176,24 +185,22 @@ fetch_redirect_url :: proc(base, location: string) -> string {
 		if i := strings.index(prefix, "?"); i >= 0 {prefix = prefix[:i]}
 		return strings.concatenate([]string{prefix, loc})
 	}
-	// html_resolve returns a borrowed slice for an absolute URL, but owns
-	// its result for relative URLs. Return an owned copy for every branch.
-	// Otherwise freeing the Location header invalidates the next URL and
-	// can cause a use-after-free / double-free during redirect validation.
 	if strings.has_prefix(loc, "http://") || strings.has_prefix(loc, "https://") {
 		return strings.clone(loc)
 	}
 	return html_resolve(base, loc)
 }
 
-fetch_session_get :: proc(s: ^Fetch_Session, target: string) -> Fetch_Result {
+fetch_session_request :: proc(s: ^Fetch_Session, target: string, post_body: string = "") -> Fetch_Result {
 	current := strings.clone(target)
 	defer delete(current)
 	if !fetch_validate_url(current) {
 		return Fetch_Result {error="invalid initial URL", effective_url=strings.clone(current)}
 	}
+	body_to_send := post_body
 	for hop in 0..=FETCH_REDIRECT_LIMIT {
-		result, location := fetch_session_once(s, current)
+		result, location := fetch_session_once(s, current, body_to_send)
+		body_to_send = "" // Subsequent redirect hops transition to standard GET
 		if result.error != "" {
 			delete(location)
 			return result
@@ -224,4 +231,12 @@ fetch_session_get :: proc(s: ^Fetch_Session, target: string) -> Fetch_Result {
 		current = next
 	}
 	return Fetch_Result {error="redirect loop"}
+}
+
+fetch_session_get :: proc(s: ^Fetch_Session, target: string) -> Fetch_Result {
+	return fetch_session_request(s, target, "")
+}
+
+fetch_session_post :: proc(s: ^Fetch_Session, target: string, post_body: string) -> Fetch_Result {
+	return fetch_session_request(s, target, post_body)
 }
