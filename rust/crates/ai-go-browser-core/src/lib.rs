@@ -1,13 +1,17 @@
 #![forbid(unsafe_code)]
 
 mod action;
+mod browser;
 mod memory;
+mod parser;
 mod semantic;
 mod session;
 mod url_policy;
 
 pub use action::ActionRef;
+pub use browser::{Browser, BrowserError};
 pub use memory::{MemoryEntry, MemoryStore};
+pub use parser::parse_semantic_html;
 pub use semantic::{SemanticElement, SemanticSnapshot};
 pub use session::Session;
 pub use url_policy::{validate_url, UrlPolicyError};
