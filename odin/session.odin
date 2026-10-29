@@ -81,8 +81,8 @@ fetch_session_init :: proc(s: ^Fetch_Session, allow_private: bool = false) -> bo
 	if curl.easy_setopt(h, .PROXY, cstring("")) != .E_OK {ok = false}
 	if curl.easy_setopt(h, .COOKIEFILE, cstring("")) != .E_OK {ok = false}
 	if curl.easy_setopt(h, .HEADERFUNCTION, fetch_headers_callback) != .E_OK {ok = false}
-	if curl.easy_setopt(h, .WRITEFUNCTION, fetch_write_callback) != .E_OK {ok = false}
-	if curl.easy_setopt(h, .PREREQFUNCTION, fetch_prereq_callback) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .WRITEFUNCTION, fetch_write) != .E_OK {ok = false}
+	if curl.easy_setopt(h, .PREREQFUNCTION, fetch_prereq) != .E_OK {ok = false}
 	if curl.easy_setopt(h, .PREREQDATA, &s.policy) != .E_OK {ok = false}
 	if !ok {
 		fetch_session_close(s)

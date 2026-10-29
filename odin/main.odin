@@ -22,7 +22,7 @@ print_usage :: proc() {
 	fmt.println("  ai-odin-browser agent [--allow-private]  # JSONL via stdin/stdout")
 	fmt.println("  ai-odin-browser parse-file pagina.html https://example.com/")
 	fmt.println("  ai-odin-browser bench-file pagina.html https://example.com/ 1200")
-	fmt.println("  A sessão HTTP preserva cookies durante follow/submit e redirecionamentos.")
+	fmt.println("  A sessÃ£o HTTP preserva cookies durante follow/submit e redirecionamentos.")
 	fmt.println("  Adicione --allow-private no fim para testar um servidor local.")
 }
 
@@ -57,7 +57,7 @@ print_page :: proc(response: Fetch_Result, page: Parsed_Page) {
 print_fetched_page :: proc(response: Fetch_Result) {
 	arena: vmem.Arena
 	if vmem.arena_init_growing(&arena) != nil {
-		fmt.println("Erro: não foi possível alocar arena")
+		fmt.println("Erro: nÃ£o foi possÃ­vel alocar arena")
 		return
 	}
 	defer vmem.arena_destroy(&arena)
@@ -98,20 +98,37 @@ get_link_target :: proc(response: Fetch_Result, index: int) -> (string, bool) {
 	return strings.clone(page.links[index-1].url, runtime.default_context().allocator), true
 }
 
-get_form_target :: proc(response: Fetch_Result, index: int, overrides: []string) -> (string, bool) {
+Form_Submit_Target :: struct {
+	url:     string,
+	body:    string,
+	is_post: bool,
+}
+
+get_form_submit :: proc(response: Fetch_Result, index: int, overrides: []string) -> (Form_Submit_Target, bool) {
 	arena: vmem.Arena
 	if vmem.arena_init_growing(&arena) != nil {
-		return "", false
+		return {}, false
 	}
 	defer vmem.arena_destroy(&arena)
 	context.allocator = vmem.arena_allocator(&arena)
+	heap := runtime.default_context().allocator
 	page := parse_html(response.body, response.effective_url)
 	if index < 1 || index > len(page.forms) {
-		return "", false
+		return {}, false
 	}
-	target, ok := form_get_url(page.forms[index-1], overrides)
-	if !ok {return "", false}
-	return strings.clone(target, runtime.default_context().allocator), true
+	form := page.forms[index-1]
+	if form.method == "post" {
+		body, ok := form_post_body(form, overrides)
+		if !ok {return {}, false}
+		return Form_Submit_Target{
+			url     = strings.clone(form.action, heap),
+			body    = strings.clone(body, heap),
+			is_post = true,
+		}, true
+	}
+	url, ok := form_get_url(form, overrides)
+	if !ok {return {}, false}
+	return Form_Submit_Target{url = strings.clone(url, heap)}, true
 }
 
 main :: proc() {
@@ -164,7 +181,7 @@ main :: proc() {
 	target := os.args[2]
 	session: Fetch_Session
 	if !fetch_session_init(&session, allow_private) {
-		fmt.println("Erro: não foi possível criar a sessão HTTP")
+		fmt.println("Erro: nÃ£o foi possÃ­vel criar a sessÃ£o HTTP")
 		return
 	}
 	defer fetch_session_close(&session)
@@ -189,7 +206,7 @@ main :: proc() {
 	}
 	if operation == "submit" {
 		if !strings.has_prefix(os.args[3], "f") {
-			fmt.println("Referência inválida. Use f1, f2...")
+			fmt.println("ReferÃªncia invÃ¡lida. Use f1, f2...")
 			return
 		}
 		form_idx, ok := strconv.parse_int(os.args[3][1:], 10)
@@ -199,13 +216,19 @@ main :: proc() {
 		for arg in os.args[4:] {
 			if arg != "--allow-private" {append(&overrides, arg)}
 		}
-		next_url, found := get_form_target(first, form_idx, overrides[:])
+		submit, found := get_form_submit(first, form_idx, overrides[:])
 		if !found {
-			fmt.println("Formulário inválido, método não-GET ou campo desconhecido")
+			fmt.println("Formulário inválido ou campo desconhecido")
 			return
 		}
-		defer delete(next_url)
-		next := fetch_session_get(&session, next_url)
+		defer delete(submit.url)
+		defer if submit.body != "" { delete(submit.body) }
+		next: Fetch_Result
+		if submit.is_post {
+			next = fetch_session_post(&session, submit.url, submit.body)
+		} else {
+			next = fetch_session_get(&session, submit.url)
+		}
 		defer delete(next.body)
 		defer delete(next.effective_url)
 		if next.error != "" {
@@ -216,17 +239,17 @@ main :: proc() {
 		return
 	}
 	if !strings.has_prefix(os.args[3], "l") {
-		fmt.println("Referência inválida. Use l1, l2...")
+		fmt.println("ReferÃªncia invÃ¡lida. Use l1, l2...")
 		return
 	}
 	index, ok := strconv.parse_int(os.args[3][1:], 10)
 	if !ok || index < 1 {
-		fmt.println("Referência inválida. Use l1, l2...")
+		fmt.println("ReferÃªncia invÃ¡lida. Use l1, l2...")
 		return
 	}
 	next_url, found := get_link_target(first, index)
 	if !found {
-		fmt.printf("Link l%d não encontrado\n", index)
+		fmt.printf("Link l%d nÃ£o encontrado\n", index)
 		return
 	}
 	defer delete(next_url)
