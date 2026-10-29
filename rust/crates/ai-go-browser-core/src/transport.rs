@@ -17,6 +17,7 @@ pub enum TransportError {
     TooManyRedirects,
     ResponseTooLarge { limit: usize },
     InvalidRedirect,
+    InvalidUtf8,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -25,6 +26,13 @@ pub struct HttpResponse {
     pub status: u16,
     pub content_type: Option<String>,
     pub body: Vec<u8>,
+}
+
+/// An HTTP response parsed into the project's semantic HTML snapshot.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct FetchedPage {
+    pub response: HttpResponse,
+    pub snapshot: crate::SemanticSnapshot,
 }
 
 /// Minimal HTTP GET transport with explicit DNS validation, address pinning,
@@ -49,6 +57,16 @@ impl Default for SafeHttpTransport {
 impl SafeHttpTransport {
     pub fn new(timeout: Duration, max_response_bytes: usize, max_redirects: usize) -> Self {
         Self { timeout, max_response_bytes, max_redirects }
+    }
+
+    /// Fetch a page and parse its response body as UTF-8 HTML.
+    /// This is a static HTML snapshot, not a JavaScript-capable browser DOM.
+    pub async fn get_page(&self, input: &str) -> Result<FetchedPage, TransportError> {
+        let response = self.get(input).await?;
+        let html = std::str::from_utf8(&response.body)
+            .map_err(|_| TransportError::InvalidUtf8)?;
+        let snapshot = crate::parse_semantic_html(response.final_url.clone(), html);
+        Ok(FetchedPage { response, snapshot })
     }
 
     pub async fn get(&self, input: &str) -> Result<HttpResponse, TransportError> {
