@@ -64,7 +64,7 @@ pub fn validate_url(input: &str) -> Result<(), UrlPolicyError> {
     Ok(())
 }
 
-fn is_non_public_ipv4(ip: Ipv4Addr) -> bool {
+pub(crate) fn is_non_public_ipv4(ip: Ipv4Addr) -> bool {
     let [a, b, _, _] = ip.octets();
     ip.is_private()
         || ip.is_loopback()
@@ -84,13 +84,19 @@ fn is_non_public_ipv4(ip: Ipv4Addr) -> bool {
         || a >= 240
 }
 
-fn is_non_public_ipv6(ip: Ipv6Addr) -> bool {
+pub(crate) fn is_non_public_ipv6(ip: Ipv6Addr) -> bool {
     let octets = ip.octets();
     let is_ipv4_mapped = octets[..10].iter().all(|byte| *byte == 0)
         && octets[10] == 0xff
         && octets[11] == 0xff;
 
+    let first_segment = ip.segments()[0];
+    let is_not_global_unicast = first_segment & 0xe000 != 0x2000;
+    let is_documentation = ip.segments()[0] == 0x2001 && ip.segments()[1] == 0x0db8;
+
     ip.is_loopback()
+        || is_not_global_unicast
+        || is_documentation
         || ip.is_unspecified()
         || ip.is_unique_local()
         || ip.is_unicast_link_local()
