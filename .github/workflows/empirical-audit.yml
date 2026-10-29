@@ -28,19 +28,19 @@ jobs:
           go build -o bin/wasmbench ./cmd/wasmbench
           go build -o bin/external_benchmarks ./cmd/external_benchmarks
 
-      - name: Test 1: Run Integrated Autotest (-demo)
+      - name: "Test 1: Run Integrated Autotest (-demo)"
         run: |
           ./bin/aigobrowser -demo
 
-      - name: Test 2: Live TLS Forensics & In-Process Benchmarks
+      - name: "Test 2: Live TLS Forensics & In-Process Benchmarks"
         run: |
           ./bin/wasmbench
 
-      - name: Test 3: WebArena & Mind2Web Real Task Evaluation
+      - name: "Test 3: WebArena & Mind2Web Real Task Evaluation"
         run: |
           ./bin/external_benchmarks
 
-      - name: Test 4: Run Core Unit Tests
+      - name: "Test 4: Run Core Unit Tests"
         run: |
           go test -v ./browser ./pkg/benchmark ./pkg/memory
 
@@ -70,19 +70,19 @@ jobs:
           go build -o bin/wasmbench.exe ./cmd/wasmbench
           go build -o bin/external_benchmarks.exe ./cmd/external_benchmarks
 
-      - name: Test 1: Run Integrated Autotest (-demo)
+      - name: "Test 1: Run Integrated Autotest (-demo)"
         run: |
           .\bin\aigobrowser.exe -demo
 
-      - name: Test 2: Live TLS Forensics & In-Process Benchmarks
+      - name: "Test 2: Live TLS Forensics & In-Process Benchmarks"
         run: |
           .\bin\wasmbench.exe
 
-      - name: Test 3: WebArena & Mind2Web Real Task Evaluation
+      - name: "Test 3: WebArena & Mind2Web Real Task Evaluation"
         run: |
           .\bin\external_benchmarks.exe
 
-      - name: Test 4: Run Core Unit Tests
+      - name: "Test 4: Run Core Unit Tests"
         run: |
           go test -v ./browser ./pkg/benchmark ./pkg/memory
 
