@@ -1,0 +1,89 @@
+name: Odin port validation
+on:
+  push:
+    paths:
+      - 'odin/**'
+      - '.github/workflows/odin.yml'
+  pull_request:
+    paths:
+      - 'odin/**'
+      - '.github/workflows/odin.yml'
+jobs:
+  compile-and-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: laytan/setup-odin@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install libcurl headers and linker library
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libcurl4-openssl-dev
+      - name: Unit tests
+        run: odin test odin
+      - name: Build CLI
+        run: odin build odin -out:ai-odin-browser
+
+      - name: Local HTTP end-to-end smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 18765 --bind 127.0.0.1 --directory odin/fixtures >/tmp/odin-http.log 2>&1 &
+          server=$!
+          trap 'kill "$server" || true' EXIT
+          sleep 1
+          ./ai-odin-browser open http://127.0.0.1:18765/index.html --allow-private >/tmp/odin-open.out
+          grep -F "Odin Demo & Smoke" /tmp/odin-open.out
+          grep -F "Navegador semântico Odin" /tmp/odin-open.out
+          grep -F "l1: Ler artigo de teste" /tmp/odin-open.out
+          if grep -q "SEGREDO-NAO-EXIBIR" /tmp/odin-open.out; then exit 1; fi
+          ./ai-odin-browser follow http://127.0.0.1:18765/index.html l1 --allow-private >/tmp/odin-follow.out
+          grep -F "Artigo Odin" /tmp/odin-follow.out
+          grep -F "Segundo documento" /tmp/odin-follow.out
+          ./ai-odin-browser submit http://127.0.0.1:18765/index.html f1 q=Odin --allow-private >/tmp/odin-submit.out
+          grep -F "Resultado GET em Odin" /tmp/odin-submit.out
+          grep -F "Pesquisa recebida" /tmp/odin-submit.out
+          ./ai-odin-browser hydrate http://127.0.0.1:18765/modern.html --allow-private >/tmp/odin-hydrate.out
+          grep -F '"@type":"Product"' /tmp/odin-hydrate.out
+          grep -F '"results":8' /tmp/odin-hydrate.out
+          grep -F '"ok":true' /tmp/odin-hydrate.out
+          ./ai-odin-browser export http://127.0.0.1:18765/index.html --allow-private >/tmp/odin-export.json
+          python3 -c 'import json; p=json.load(open("/tmp/odin-export.json")); assert p["status"] == 200; assert p["title"] == "Odin Demo & Smoke"; assert p["links"][0]["label"] == "Ler artigo de teste"; assert p["buttons"][0]["action"].endswith("/search"); assert p["buttons"][0]["method"] == "get"'
+
+
+      - name: Session cookies, redirects and SSRF smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 odin/fixtures/session_server.py >/tmp/odin-session.log 2>&1 &
+          server=$!
+          trap 'kill "$server" || true' EXIT
+          sleep 1
+          ./ai-odin-browser open http://127.0.0.1:18766/start --allow-private >/tmp/odin-session-open.out
+          grep -F "Session established" /tmp/odin-session-open.out
+          grep -F "Authenticated session" /tmp/odin-session-open.out
+          ./ai-odin-browser follow http://127.0.0.1:18766/start l1 --allow-private >/tmp/odin-session-follow.out
+          grep -F "Cookie kept" /tmp/odin-session-follow.out
+          ./ai-odin-browser submit http://127.0.0.1:18766/start f1 q=test123 --allow-private >/tmp/odin-session-submit.out
+          grep -F "Cookie form works" /tmp/odin-session-submit.out
+          grep -F "Query test123" /tmp/odin-session-submit.out
+          ./ai-odin-browser open http://127.0.0.1:18766/loop --allow-private >/tmp/odin-loop.out
+          grep -F "redirect limit exceeded" /tmp/odin-loop.out
+          ./ai-odin-browser open http://127.0.0.1:18766/bad-scheme --allow-private >/tmp/odin-bad-scheme.out
+          grep -F "redirect rejected" /tmp/odin-bad-scheme.out
+          ./ai-odin-browser open http://127.0.0.1:18766/bad-target --allow-private >/tmp/odin-bad-target.out
+          grep -F "redirect rejected" /tmp/odin-bad-target.out
+          ./ai-odin-browser open http://127.0.0.1:18766/start >/tmp/odin-private-denied.out
+          grep -F "Erro HTTP:" /tmp/odin-private-denied.out
+
+
+      - name: Persistent JSONL agent smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 odin/fixtures/session_server.py >/tmp/odin-agent-server.log 2>&1 &
+          server=$!
+          trap 'kill "$server" || true' EXIT
+          sleep 1
+          python3 odin/fixtures/agent_smoke.py

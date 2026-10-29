@@ -421,6 +421,13 @@ func Parse(raw []byte, baseURL string, status, bytesRead, textLimit int) Page {
 		if tok.tag == "title" {
 			fr.hidden = false
 		}
+		if tok.tag == "meta" && p.Description == "" {
+			name := strings.ToLower(attr(attrs, "name"))
+			prop := strings.ToLower(attr(attrs, "property"))
+			if name == "description" || prop == "og:description" || prop == "twitter:description" {
+				p.Description = norm(attr(attrs, "content"))
+			}
+		}
 		if tok.tag == "a" && !fr.hidden && has(attrs, "href") {
 			if href := resolve(base, attr(attrs, "href")); href != "" {
 				fr.link = len(p.Links)
