@@ -35,6 +35,15 @@ pub struct FetchedPage {
     pub snapshot: crate::SemanticSnapshot,
 }
 
+impl FetchedPage {
+    fn from_response(response: HttpResponse) -> Result<Self, TransportError> {
+        let html = std::str::from_utf8(&response.body)
+            .map_err(|_| TransportError::InvalidUtf8)?;
+        let snapshot = crate::parse_semantic_html(response.final_url.clone(), html);
+        Ok(Self { response, snapshot })
+    }
+}
+
 /// Minimal HTTP GET transport with explicit DNS validation, address pinning,
 /// redirect revalidation, timeouts, and a response-size cap.
 ///
@@ -62,11 +71,7 @@ impl SafeHttpTransport {
     /// Fetch a page and parse its response body as UTF-8 HTML.
     /// This is a static HTML snapshot, not a JavaScript-capable browser DOM.
     pub async fn get_page(&self, input: &str) -> Result<FetchedPage, TransportError> {
-        let response = self.get(input).await?;
-        let html = std::str::from_utf8(&response.body)
-            .map_err(|_| TransportError::InvalidUtf8)?;
-        let snapshot = crate::parse_semantic_html(response.final_url.clone(), html);
-        Ok(FetchedPage { response, snapshot })
+        FetchedPage::from_response(self.get(input).await?)
     }
 
     pub async fn get(&self, input: &str) -> Result<HttpResponse, TransportError> {
@@ -175,6 +180,31 @@ async fn resolve_public_addresses(url: &Url) -> Result<(Option<String>, Vec<Sock
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_response_body_into_semantic_snapshot() {
+        let response = HttpResponse {
+            final_url: "https://example.com/page".into(),
+            status: 200,
+            content_type: Some("text/html; charset=utf-8".into()),
+            body: b"<title>Demo</title><button>Continue</button>".to_vec(),
+        };
+        let page = FetchedPage::from_response(response).unwrap();
+        assert_eq!(page.snapshot.url, "https://example.com/page");
+        assert_eq!(page.snapshot.title, "Demo");
+        assert_eq!(page.snapshot.actionable().count(), 1);
+    }
+
+    #[test]
+    fn rejects_non_utf8_html_response() {
+        let response = HttpResponse {
+            final_url: "https://example.com/".into(),
+            status: 200,
+            content_type: Some("text/html".into()),
+            body: vec![0xff, 0xfe],
+        };
+        assert_eq!(FetchedPage::from_response(response), Err(TransportError::InvalidUtf8));
+    }
 
     #[test]
     fn default_limits_are_conservative() {
